@@ -1,7 +1,7 @@
 # Virtual Power Plant (VPP) Project — Master Briefing Document
-**Version:** 4.0
+**Version:** 5.0
 **Date:** April 2026
-**Status:** In Progress — Data Pipeline Build
+**Status:** In Progress — Data Pipeline Complete, Asset Model Next
 
 ---
 
@@ -9,7 +9,7 @@
 
 Build a realistic Virtual Power Plant (VPP) simulation model that mirrors real-world asset optimisation operations in the GB energy market. The ultimate goal is to develop the skills, processes, and team workflows needed to operate as a professional VPP optimisation and trading desk.
 
-This is not a quick-build project. It is being developed carefully and deliberately to create genuine operational experience.
+This is not a quick-build project. It is being developed carefully and deliberately to create genuine operational experience — with ambition to use this platform as a portfolio piece for roles at companies like Statkraft and EDF Renewables, or as the foundation for a startup.
 
 ---
 
@@ -18,6 +18,8 @@ This is not a quick-build project. It is being developed carefully and deliberat
 Position as a team of asset optimisers and energy traders operating across multiple GB wholesale and balancing markets. The model should replicate the daily experience of a real optimisation desk — with traders and optimisers working together across short-term and day-ahead timeframes.
 
 **This project is not initially focused on profit.** The primary objective is to master daily net arbitrage across markets before layering in cost of investment and financial performance analysis.
+
+The platform will be smart, polished, and credible — grounded in real GB market data, real asset constraints, and real market structure.
 
 ---
 
@@ -41,7 +43,7 @@ A proxy portfolio of 5 power units with variable sizing for portfolio diversity:
 - North Scotland has high wind penetration — creates interesting system price dynamics
 - South Scotland is a major renewable export zone
 - South England assets experience highest demand zone exposure and better solar yield
-- Solar yield in South England will be materially higher than Scotland — affects co-located optimisation decisions
+- Solar yield in South England will be materially higher than Scotland
 
 **Asset constraints to define before Phase 1:**
 - Export/import limits per asset
@@ -62,28 +64,27 @@ All markets are GB-based:
 
 **Ancillary service focus: Dynamic Containment (DC)**
 - DC High (over-frequency response) and DC Low (under-frequency response)
-- Daily ESO tenders — clean, well-documented, free data available
+- Daily ESO tenders across 6 EFA blocks (4-hour windows)
 - All 5 assets are credible DC participants given MW sizes
-- Batteries are naturally well-suited to frequency response
+- EFA blocks: EFA1=23-03, EFA2=03-07, EFA3=07-11, EFA4=11-15, EFA5=15-19, EFA6=19-23
 
 ---
 
-## 5. Data Sources
+## 5. Data Sources & Pipelines
 
-### Free & Accessible
-- **Elexon BMRS** — BM data, settlement prices, system prices, imbalance volumes
-- **National Grid ESO** — DC tender results, ancillary service data, system forecasts
-- **EPEX / N2EX** — Day ahead auction results (with short lag)
-- **Open-Meteo / Met Office DataHub (free tier)** — Weather data for solar and demand forecasting
-- **Sheffield Solar / Solcast (free tier)** — Solar generation estimates
+All pipelines built and working. Data saved to `/data` folder and pushed to GitHub.
 
-### Known Gap (Managed)
+| Data | Source | Script | Status |
+|---|---|---|---|
+| System prices (SSP/SBP) | Elexon BMRS | `fetch_bmrs.py` | ✅ Live |
+| Market index prices (MID) | Elexon BMRS | `fetch_da_prices.py` | ✅ Live |
+| DC forecast (4-day) | NESO Data Portal | `fetch_dc_tenders.py` | ✅ Live |
+| Weather (temp, wind, solar radiation) | Open-Meteo | `fetch_weather.py` | ✅ Live |
+| Solar generation (GB national) | Sheffield Solar PV_Live | `fetch_solar.py` | ✅ Live |
+
+**Known Gap (Managed):**
 - Real-time intraday continuous prices not freely available
-- **Workaround:** Approximate intraday using DA prices plus BM system price spread — sufficient for Phase 1 and Phase 2
-
-### Not Required Yet (Paid)
-- High-quality solar irradiance forecasts at scale
-- Real-time intraday order book data
+- Workaround: Approximate intraday using DA prices plus BM system price spread
 
 **Principle: No paid data subscriptions in the short to medium term.**
 
@@ -94,8 +95,8 @@ All markets are GB-based:
 | Component | Tool | Notes |
 |---|---|---|
 | Core language | Python 3.12.4 | Confirmed version |
-| Data storage | CSV → SQLite | Start with CSV, upgrade to SQLite when needed |
-| Dashboard | Streamlit | Simple, Python-based, fast to build |
+| Data storage | CSV → SQLite | Currently CSV, upgrade to SQLite when needed |
+| Dashboard | Streamlit | To be built in later phase |
 | Optimisation engine | PuLP / Google OR-Tools | For charge/discharge scheduling |
 | Version control | GitHub | Repo: github.com/eugenekem/vpp-optimiser |
 
@@ -129,21 +130,23 @@ A reconciliation step is required after each trading day — comparing planned p
 - Model runs in real time but makes no real trades
 - Decisions compared against actual market outcomes same day
 - Tests optimisation logic, team workflows, and decision timing
-- Exposes data feed issues, timing problems, and model gaps
 - **This is where the team starts making live decisions without financial risk**
 
 ### Phase 3 — Live Single Asset
 - Trade one asset live in one market (Battery 1 — 10MW 2-hour standalone in BM)
 - Remaining assets remain in shadow mode
-- Learn what breaks in real operation
 
 ### Phase 4 — Scale Up
 - Add assets and markets gradually
 - Only expand when previous layer is stable
 
 ### Phase 5 — Residential Solar Aggregation (Future Scope)
-- Operate as an aggregator across ~100 rooftop residential solar systems
-- **Parked until Phase 4 is stable. Not in scope for current build.**
+- ~100 rooftop residential solar systems as aggregator
+- **Parked until Phase 4 is stable**
+
+### Phase 6+ — To Be Defined
+- Project ambition extends well beyond Phase 5
+- Future phases may include international markets, AI-driven optimisation, and full commercial operation
 
 ---
 
@@ -161,14 +164,17 @@ A reconciliation step is required after each trading day — comparing planned p
 |---|---|
 | Project folder and GitHub repo set up | ✅ Done |
 | Python environment confirmed (3.12.4) | ✅ Done |
-| Elexon system prices pipeline (`fetch_bmrs.py`) | ✅ Done |
-| Market index prices pipeline (`fetch_da_prices.py`) | ✅ Done |
-| National Grid ESO / DC tender data pipeline | ⬜ Next |
-| Weather data pipeline | ⬜ To do |
-| Solar generation data pipeline | ⬜ To do |
-| Asset model build | ⬜ To do |
+| Elexon system prices pipeline | ✅ Done |
+| Market index prices pipeline | ✅ Done |
+| DC forecast pipeline | ✅ Done |
+| Weather data pipeline | ✅ Done |
+| Solar generation pipeline | ✅ Done |
+| Asset model build | ⬜ Next |
 | Optimisation logic | ⬜ To do |
 | Streamlit dashboard | ⬜ To do |
+| Settlement reconciliation logic | ⬜ To do |
+| Phase 1 historical replay | ⬜ To do |
+| Phase 2 shadow trading | ⬜ To do |
 
 ---
 
@@ -178,6 +184,7 @@ A reconciliation step is required after each trading day — comparing planned p
 - Build market and asset logic correctly before adding financial layers
 - Do not double-commit asset capacity across markets
 - No paid data subscriptions in the short to medium term
+- Academic research will inform optimisation algorithm design — pause and read when Claude flags it
 - Paste this document at the start of every new Claude session to maintain context
 
 ---
@@ -191,4 +198,4 @@ A reconciliation step is required after each trading day — comparing planned p
 
 ---
 
-*This document is a living reference. Update to Version 5 when new decisions or scope changes are agreed.*
+*This document is a living reference. Update to Version 6 when new decisions or scope changes are agreed.*
