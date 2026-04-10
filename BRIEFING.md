@@ -1,31 +1,72 @@
 # Virtual Power Plant (VPP) Project — Master Briefing Document
-**Version:** 6.0
+**Version:** 7.0
 **Date:** April 2026
-**Status:** In Progress — P&L Calculator Complete, Risk Layer Next
+**Status:** In Progress — Dashboard Built, Dispatch Schedule Next
 
 ---
 
 ## 1. Project Goal & Ambition
 
-Build a realistic Virtual Power Plant (VPP) simulation model that mirrors real-world asset optimisation operations in the GB energy market. The ultimate goal is to develop the skills, processes, and team workflows needed to operate as a professional VPP optimisation and trading desk.
+Build a production-grade Virtual Power Plant (VPP) optimisation platform grounded in real GB market data, real asset constraints, and real market structure. The platform will demonstrate professional-level capability in battery asset optimisation, multi-market stacking, risk management, and operational decision-making.
 
-This is not a quick-build project. It is being developed carefully and deliberately to create genuine operational experience — with ambition to use this platform as a portfolio piece for roles at companies like Statkraft and EDF Renewables, or as the foundation for a startup.
-
----
-
-## 2. Business Vision
-
-Position as a team of asset optimisers, traders, short-term planners and risk analysts operating across multiple GB wholesale and balancing markets.
-
-The platform will be smart, polished, and credible — grounded in real GB market data, real asset constraints, and real market structure.
-
-Vision: A full trading operations platform — a war room dashboard where the user sits as head of optimisation, sees all assets live, manages positions, reviews P&L, monitors risk, and makes decisions alongside the optimiser.
-
-**This project is not initially focused on profit.** The primary objective is to master daily net arbitrage across markets before layering in cost of investment and financial performance analysis.
+This is not a learning exercise. It is a commercial platform build — with ambition to underpin a consultancy, startup, or to position for senior roles at companies like Statkraft, Habitat Energy, Limejump, or EDF Renewables.
 
 ---
 
-## 3. Asset Portfolio
+## 2. Owner Profile
+
+**Eugene Sovathana Kem** — Glasgow, UK
+
+**Current role:** GB Electricity Market Analyst, SSE Plc (Oct 2022 - Present)
+- Leads end-to-end development of Plexos power market model for day-ahead forecasting
+- Drives SSE's Net Zero investment strategy through long-term revenue forecasts
+- Reduced capacity market simulation run times by 95% migrating Excel/VBA to Python
+- Facilitates multi-billion pound investment decisions through quantitative analysis
+- Performs annual DCF analysis including NPV and LCOE across technology types
+- Presents complex model outputs to senior stakeholders across business units
+
+**Previous experience:**
+- Lead Analyst, The Lantau Group (Hong Kong) — supply/demand modelling across Southeast Asia
+- Analyst, The Lantau Group — renewable project due diligence and long-term price forecasting
+- Electrical Engineer, Kamworks Solar (Cambodia) — solar project design and delivery
+
+**Education:**
+- MSc International Energy Studies & Energy Economics, University of Dundee — **Paul Stevens Prize winner, highest distinction**
+- Data Analytics Professional Certificate, Imperial College Business School
+- Engineer's Degree, Electrical & Electronic, Institute of Technology of Cambodia
+
+**Key skills directly applicable to this project:**
+- Long-term fundamental modelling (Plexos), capacity market bidding, grid-scale storage economics
+- Statistical modelling, Monte Carlo simulation, machine learning (Python, SQL, R, GAMS)
+- Regulatory economics, market design, asset bankability assessment
+- DCF analysis, NPV, LCOE, real option valuation
+
+**What this project adds to the profile:**
+- Real-time battery dispatch optimisation (rules-based → LP → stochastic)
+- Multi-market stacking (DA, intraday, BM, ancillary services)
+- Production-grade platform development (Python, Streamlit, SQLite, GitHub)
+- AI agent integration for autonomous optimisation
+
+---
+
+## 3. Business Vision
+
+A full trading operations platform — a war room where the operator sits as head of optimisation, sees all assets live, manages positions across markets, reviews P&L and risk, and makes decisions alongside an AI optimiser.
+
+**Longer term:** This platform could underpin:
+- An independent VPP optimisation consultancy
+- A startup offering optimisation-as-a-service to battery asset owners
+- A demonstrable portfolio piece for senior roles at Statkraft, EDF, Habitat Energy, Limejump
+
+**The platform will be:**
+- Production-grade — not a demo, a real operational system
+- Commercially credible — real GB market data, real asset economics, real risk management
+- Intellectually rigorous — grounded in academic research and professional market knowledge
+- AI-augmented — agents that observe, decide, and act alongside the human operator
+
+---
+
+## 4. Asset Portfolio
 
 | Asset | Type | Duration | MW (Battery) | MW (Solar) | Region | DNO |
 |---|---|---|---|---|---|---|
@@ -43,7 +84,7 @@ Vision: A full trading operations platform — a war room dashboard where the us
 
 ---
 
-## 4. Target Markets
+## 5. Target Markets
 
 | Market | Venue | Notes |
 |---|---|---|
@@ -56,7 +97,7 @@ Vision: A full trading operations platform — a war room dashboard where the us
 
 ---
 
-## 5. Data Sources & Pipelines
+## 6. Data Sources & Pipelines
 
 | Data | Source | Script | Status |
 |---|---|---|---|
@@ -66,21 +107,29 @@ Vision: A full trading operations platform — a war room dashboard where the us
 | Weather | Open-Meteo | `fetch_weather.py` | ✅ Live |
 | Solar generation | Sheffield Solar PV_Live | `fetch_solar.py` | ✅ Live |
 
+**Known Gap (Managed):**
+- Real-time intraday continuous prices not freely available
+- Workaround: Approximate intraday using DA prices plus BM system price spread
+
+**Principle: No paid data subscriptions in the short to medium term.**
+
 ---
 
-## 6. Tech Stack
+## 7. Tech Stack
 
 | Component | Tool | Notes |
 |---|---|---|
 | Core language | Python 3.12.4 | Confirmed |
-| Data storage | CSV → SQLite | Currently CSV |
-| Dashboard | Streamlit | War room operations platform |
-| Optimisation engine | PuLP / Google OR-Tools | LP layer after rules-based |
+| Data storage | CSV → SQLite | Currently CSV, upgrade to SQLite when needed |
+| Dashboard | Streamlit | War room operations platform — live |
+| Optimisation engine | PuLP / Google OR-Tools | LP layer planned after rules-based validated |
+| Stochastic optimisation | To be researched | Monte Carlo + price uncertainty modelling |
+| AI agents | Claude API | Autonomous optimisation and decision support |
 | Version control | GitHub | github.com/eugenekem/vpp-optimiser |
 
 ---
 
-## 7. Optimiser Architecture
+## 8. Optimiser Architecture
 
 | File | Layer | Status |
 |---|---|---|
@@ -88,14 +137,35 @@ Vision: A full trading operations platform — a war room dashboard where the us
 | `optimiser.py` | Rules-based optimiser | ✅ Built |
 | `optimiser_da.py` | Forward-looking DA optimiser | ✅ Built |
 | `pnl.py` | P&L calculator | ✅ Built |
+| `risk.py` | Risk layer (VaR, scenarios, concentration) | ✅ Built |
+| `dashboard.py` | War room Streamlit dashboard | ✅ Built |
 | `optimiser_id.py` | Intraday layer | ⬜ To do |
 | `optimiser_bm.py` | BM layer | ⬜ To do |
-| `risk.py` | Risk layer (VaR, scenarios) | ⬜ To do |
 | `dispatcher.py` | Coordinates all layers | ⬜ To do |
+
+**Optimisation roadmap:**
+1. Rules-based (done) → 2. Forward-looking DA (done) → 3. LP optimisation → 4. Stochastic optimisation under price uncertainty → 5. AI agent layer
 
 ---
 
-## 8. Team Structure
+## 9. Dashboard Sections
+
+| Section | Status | Notes |
+|---|---|---|
+| Morning briefing (market signal) | ✅ Built | Green/amber/red signal with price metrics |
+| Strategy recommendations | ✅ Built | Per-asset actionable guidance |
+| Portfolio P&L | ✅ Built | Revenue, cost, net per asset |
+| Price curve | ✅ Built | 48-period settlement price chart |
+| Asset status | ✅ Built | SOC, MW, solar per asset |
+| Risk summary | ✅ Built | Sharpe, VaR, volatility, concentration |
+| DC tender forecast | ✅ Built | 4-day forward NESO data |
+| Dispatch schedule | ⬜ Next | Period-by-period per asset view |
+| Monthly P&L view | ⬜ To do | Aggregate performance over time |
+| Telegram alerts | ⬜ To do | Real-time notifications to team |
+
+---
+
+## 10. Team Structure (Target)
 
 | Role | Responsibility |
 |---|---|
@@ -103,10 +173,11 @@ Vision: A full trading operations platform — a war room dashboard where the us
 | Traders | DA and intraday position management, DC tender management |
 | Short-term Planners | Intraday and BM real-time decisions |
 | Risk | Exposure monitoring, VaR, scenario analysis, price risk |
+| AI Agents | Autonomous monitoring, decision support, alert generation |
 
 ---
 
-## 9. Operating Model
+## 11. Operating Model
 
 - One day behind real time using published data
 - DA gate closure anchor: 12:00 noon day before delivery
@@ -115,18 +186,18 @@ Vision: A full trading operations platform — a war room dashboard where the us
 
 ---
 
-## 10. Development Phases
+## 12. Development Phases
 
 - **Phase 1** — Historical Replay
 - **Phase 2** — Shadow Trading (Priority Phase)
 - **Phase 3** — Live Single Asset (Battery 1, BM first)
 - **Phase 4** — Scale Up
 - **Phase 5** — Residential Solar Aggregation (parked)
-- **Phase 6+** — International markets, AI optimisation, full commercial operation
+- **Phase 6+** — International markets, AI optimisation, full commercial operation, consultancy/startup
 
 ---
 
-## 11. Progress To Date
+## 13. Progress To Date
 
 | Task | Status |
 |---|---|
@@ -137,36 +208,43 @@ Vision: A full trading operations platform — a war room dashboard where the us
 | Rules-based optimiser | ✅ Done |
 | Forward-looking DA optimiser | ✅ Done |
 | P&L calculator | ✅ Done |
-| Risk layer (VaR, scenario analysis) | ⬜ Next |
+| Risk layer | ✅ Done |
+| War room dashboard (v1) | ✅ Done |
+| Dispatch schedule view | ⬜ Next |
 | Intraday optimiser layer | ⬜ To do |
 | BM optimiser layer | ⬜ To do |
-| War room Streamlit dashboard | ⬜ To do |
+| LP optimisation upgrade | ⬜ To do |
+| Stochastic optimisation | ⬜ To do |
+| AI agent layer | ⬜ To do |
+| Monthly P&L reporting | ⬜ To do |
+| Telegram alerts | ⬜ To do |
 | Settlement reconciliation | ⬜ To do |
 | Phase 1 historical replay | ⬜ To do |
 | Phase 2 shadow trading | ⬜ To do |
 
 ---
 
-## 12. Key Principles
+## 14. Key Principles
 
-- Plan carefully before executing
+- This is a production-grade build, not a learning exercise
 - Build modularly — each layer plugs in independently
 - Do not double-commit asset capacity across markets
 - Risk-adjusted revenue is the target, not just maximum revenue
+- Optimisation roadmap: rules-based → LP → stochastic → AI agents
+- Academic research will inform optimisation design — pause and read when Claude flags it
 - No paid data subscriptions in the short to medium term
-- Academic research will inform optimisation — pause and read when Claude flags it
 - Paste this document at the start of every new Claude session
 
 ---
 
-## 13. Open Questions / To Decide Later
+## 15. Open Questions / To Decide Later
 
 - Export and import limits per asset
 - Battery degradation modelling approach
-- Gantt chart / project timeline
+- Stochastic optimisation research — flag when ready to pause and study
 - Cost of investment analysis — Phase 4 onwards
-- LP optimisation upgrade — after rules-based layer is validated
+- Consultancy/startup structure — Phase 6+
 
 ---
 
-*Update to Version 7 when new decisions or scope changes are agreed.*
+*Update to Version 8 when new decisions or scope changes are agreed.*
