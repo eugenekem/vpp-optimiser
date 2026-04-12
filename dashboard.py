@@ -69,7 +69,7 @@ if df_prices is not None:
     max_price = df_prices["price"].max()
     has_negative = min_price < 0
 
-    if price_range > 80 and has_negative:
+    if has_negative and price_range > 40:
         signal = "🟢 Good day"
         signal_text = "Wide price spread with negative prices — strong arbitrage conditions."
         signal_color = "success"
@@ -120,7 +120,7 @@ if df_prices is not None:
         max_concentrated_asset = None
         max_concentration_pct = 0
 
-    if price_range > 80 and has_negative:
+    if has_negative and price_range > 40:
         day_type = "green"
     elif price_range > 50:
         day_type = "amber"
@@ -277,6 +277,40 @@ if dc_files:
     st.dataframe(df_dc, use_container_width=True, hide_index=True)
 else:
     st.info("No DC forecast data available.")
+# --- Dispatch Schedule ---
+st.markdown("### Dispatch schedule")
+
+if df_schedule is not None:
+    st.caption("DA optimiser decisions — period by period")
+
+    asset_tabs = st.tabs(["Battery_1", "Battery_2", "Battery_3", "Battery_4", "Battery_5"])
+
+    for i, tab in enumerate(asset_tabs):
+        asset_name = f"Battery_{i+1}"
+        with tab:
+            df_asset = df_schedule[df_schedule["asset"] == asset_name].copy()
+            df_asset = df_asset[["settlement_period", "price", "action", "power_mw", "soc"]].copy()
+            df_asset.columns = ["Period", "Price (£/MWh)", "Action", "Power (MW)", "SOC (%)"]
+
+            def highlight_action(row):
+                if row["Action"] == "charge":
+                    return ["background-color: #d4edda"] * len(row)
+                elif row["Action"] == "discharge":
+                    return ["background-color: #f8d7da"] * len(row)
+                else:
+                    return [""] * len(row)
+
+            styled = df_asset.style.apply(highlight_action, axis=1)
+            st.dataframe(styled, use_container_width=True, hide_index=True)
+
+            charges = len(df_asset[df_asset["Action"] == "charge"])
+            discharges = len(df_asset[df_asset["Action"] == "discharge"])
+            holds = len(df_asset[df_asset["Action"] == "hold"])
+            st.caption(f"Charge: {charges} periods | Discharge: {discharges} periods | Hold: {holds} periods")
+else:
+    st.info("No dispatch schedule available. Run optimiser_da.py first.")
+
+
 
 st.divider()
 st.caption(f"VPP War Room | Data as of {yesterday} | github.com/eugenekem/vpp-optimiser")
