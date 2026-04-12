@@ -42,6 +42,19 @@
 ## Session — 2026-04-12 18:26
 
 ### Built this session:
+- dispatch schedule view, fixed signal logic, dashboard v2 complete
+
+### Decisions made:
+- green day triggered by negative prices not just spread size
+
+### Next session:
+- intraday optimiser layer OR LP optimisation upgrade
+
+
+---
+## Session — 2026-04-12 18:28
+
+### Built this session:
 - 
 
 ### Decisions made:
