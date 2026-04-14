@@ -9,7 +9,7 @@
 
 Build a realistic Virtual Power Plant (VPP) simulation model that mirrors real-world asset optimisation operations in the GB energy market. The ultimate goal is to develop the skills, processes, and team workflows needed to operate as a professional VPP optimisation and trading desk.
 
-This is not a quick-build project. It is being developed carefully and deliberately to create genuine operational experience — with ambition to use this platform as a portfolio piece for roles at companies like Statkraft and EDF Renewables, or as the foundation for a startup.
+This is not a quick-build project. It is being developed carefully and deliberately to create genuine operational experience — with ambition to use this platform as a portfolio piece for senior roles in energy storage optimisation and trading, or as the foundation for an independent consultancy or startup.
 
 ---
 
