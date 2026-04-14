@@ -1,0 +1,78 @@
+import subprocess
+import sys
+from datetime import datetime
+
+# -----------------------------------------------------------
+# update_briefing.py
+# Run this script to commit BRIEFING.md and update session log
+# Usage: python update_briefing.py
+#
+# HOW TO USE:
+# 1. Edit BRIEFING.md directly with any updates
+# 2. Run this script
+# 3. Enter the version number when prompted
+# 4. Fill in SESSIONS.md with what you built and decided
+# 5. Run this script again to push the session log
+# -----------------------------------------------------------
+
+SESSION_ENTRY_TEMPLATE = """
+---
+## Session — {datetime}
+
+### Built this session:
+- 
+
+### Decisions made:
+- 
+
+### Next session:
+- 
+
+"""
+
+def check_briefing_exists():
+    import os
+    if not os.path.exists("BRIEFING.md"):
+        print("❌ BRIEFING.md not found in current directory.")
+        print("Make sure you're running this from ~/Documents/vpp-optimiser")
+        sys.exit(1)
+    print("✅ BRIEFING.md found")
+
+def update_session_log():
+    entry = SESSION_ENTRY_TEMPLATE.format(
+        datetime=datetime.today().strftime("%Y-%m-%d %H:%M")
+    )
+    with open("SESSIONS.md", "a") as f:
+        f.write(entry)
+    print("✅ SESSIONS.md updated — fill in what you built and decided")
+
+def git_push(version):
+    commands = [
+        ["git", "add", "."],
+        ["git", "commit", "-m", f"Update briefing to v{version} and session log"],
+        ["git", "push"]
+    ]
+    for cmd in commands:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            if "nothing to commit" in result.stdout or "nothing to commit" in result.stderr:
+                print("ℹ️  Nothing new to commit — already up to date")
+                return
+            print(f"Git error: {result.stderr}")
+            sys.exit(1)
+    print("✅ Pushed to GitHub")
+
+if __name__ == "__main__":
+    print("\n🚀 VPP Optimiser — Briefing Update Script")
+    print("==========================================")
+    
+    check_briefing_exists()
+    
+    version = input("\nEnter briefing version number (e.g. 8): ").strip()
+    
+    update_session_log()
+    git_push(version)
+    
+    print(f"\n✅ Done — BRIEFING.md v{version} committed and pushed to GitHub")
+    print("📝 Open SESSIONS.md and fill in what you built and decided this session")
+    print("   Then run this script again to push the completed session log\n")

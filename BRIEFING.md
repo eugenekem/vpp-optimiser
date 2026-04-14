@@ -21,7 +21,7 @@ The platform will be smart, polished, and credible — grounded in real GB marke
 
 Vision: A full trading operations platform — a war room dashboard where the user sits as head of optimisation, sees all assets live, manages positions, reviews P&L, monitors risk, and makes decisions alongside the optimiser.
 
-**This project is not initially focused on profit.** The primary objective is to master daily net arbitrage across markets before layering in cost of investment and financial performance analysis.
+**This is not a quick-build project. It is being developed carefully and deliberately to create genuine operational experience — with ambition to use this platform as a portfolio piece for senior roles in energy storage optimisation and trading, or as the foundation for an independent consultancy or startup.
 
 ---
 
