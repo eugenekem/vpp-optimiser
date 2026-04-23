@@ -102,3 +102,19 @@
 ### Next session:
 - 
 
+---
+## Session — 2026-04-23
+
+### Built this session:
+- LP optimiser with PuLP (optimiser_lp.py)
+- Comparison harness (compare_optimisers.py)
+- NOTES.md for technical decisions log
+
+### Decisions made:
+- Fixed energy balance bug (missing 0.5h time factor)
+- Validated LP: +12.2% vs rules-based, +24.1% vs forward-DA
+- Cleaned README and BRIEFING for professional framing
+- Personal career positioning moved out of repo
+
+### Next session:
+- Integrate LP optimiser into dashboard OR build intraday layer
