@@ -1,189 +1,91 @@
-# ⚡ VPP Optimiser
+# VPP Optimiser
 
-A production-grade **Virtual Power Plant (VPP) optimisation platform** for GB energy markets. Built on real market data from Elexon BMRS and National Grid ESO, the platform simulates the full operational workflow of a battery asset optimisation desk — from day-ahead scheduling through to risk management and P&L reporting.
-
----
-
-## Overview
-
-The platform manages a proxy portfolio of 5 BESS assets (145 MW total capacity) across multiple GB wholesale and ancillary markets. It is designed to replicate the daily decision-making of a real VPP optimisation team — with a war room dashboard, per-asset strategy recommendations, and a modular optimisation architecture.
-
-**Target markets:**
-- Day Ahead (DA) — EPEX / N2EX auction
-- Intraday (ID) — Continuous intraday trading
-- Balancing Mechanism (BM) — Elexon / National Grid ESO
-- Ancillary Services — Dynamic Containment (DC High and DC Low)
+A Virtual Power Plant optimisation platform for the GB energy market. Models battery dispatch across day-ahead, intraday, balancing mechanism, and ancillary service markets using real published market data.
 
 ---
 
-## Asset Portfolio
+## Portfolio
 
-| Asset | Type | Duration | Capacity | Region |
-|---|---|---|---|---|
-| Battery 1 | Standalone | 2-hour | 10 MW | North Scotland |
-| Battery 2 | Standalone | 4-hour | 25 MW | North England |
-| Battery 3 | Standalone | 4-hour | 50 MW | South England |
-| Battery 4 | Co-located + Solar | 4-hour | 20 MW / 15 MW solar | South Scotland |
-| Battery 5 | Co-located + Solar | 4-hour | 40 MW / 30 MW solar | South England |
+Five battery assets across Scotland and England:
+
+| Asset | Type | Duration | Battery | Solar | Region |
+|---|---|---|---|---|---|
+| Battery 1 | Standalone | 2-hour | 10 MW | — | North Scotland |
+| Battery 2 | Standalone | 4-hour | 25 MW | — | North England |
+| Battery 3 | Standalone | 4-hour | 50 MW | — | South England |
+| Battery 4 | Co-located | 4-hour | 20 MW | 15 MW | South Scotland |
+| Battery 5 | Co-located | 4-hour | 40 MW | 30 MW | South England |
+
+**Total:** ~145 MW battery, 45 MW solar.
 
 ---
 
-## Architecture
+## Markets
 
-```
-vpp-optimiser/
-├── scripts/                  # Data pipeline scripts
-│   ├── fetch_bmrs.py         # Elexon system prices (SSP/SBP)
-│   ├── fetch_da_prices.py    # Market index prices (MID)
-│   ├── fetch_dc_tenders.py   # NESO DC tender forecast
-│   ├── fetch_weather.py      # Open-Meteo weather data
-│   └── fetch_solar.py        # Sheffield Solar PV_Live
-│
-├── models/                   # Core optimisation models
-│   ├── battery.py            # Battery asset model (SOC, charge/discharge logic)
-│   ├── optimiser.py          # Rules-based optimiser
-│   ├── optimiser_da.py       # Forward-looking DA optimiser
-│   ├── pnl.py                # P&L calculator
-│   └── risk.py               # Risk layer (VaR, Sharpe, scenario analysis)
-│
-├── dashboard.py              # War room Streamlit dashboard
-├── update_briefing.py        # Briefing and session log automation
-├── BRIEFING.md               # Master project briefing document
-└── data/                     # Output data (CSV)
-```
+- Day Ahead (EPEX / N2EX)
+- Intraday (continuous)
+- Balancing Mechanism (Elexon / NESO)
+- Dynamic Containment High and Low (NESO)
 
 ---
 
 ## Data Sources
 
-All data is sourced from free, publicly available APIs:
+All free-tier, operational data within 24 hours of settlement:
 
-| Data | Source | API |
-|---|---|---|
-| System prices (SSP/SBP) | Elexon BMRS | `data.elexon.co.uk` |
-| Market index prices | Elexon BMRS | `data.elexon.co.uk` |
-| DC tender forecast | National Grid ESO | `api.neso.energy` |
-| Weather data | Open-Meteo | `archive-api.open-meteo.com` |
-| Solar generation | Sheffield Solar PV_Live | `api.solar.sheffield.ac.uk` |
+- Elexon BMRS — system prices, market index prices
+- NESO Data Portal — DC tender forecasts, ancillary service data
+- Open-Meteo — weather data per asset location
+- Sheffield Solar PV_Live — GB solar generation
 
 ---
 
-## War Room Dashboard
+## Architecture
 
-The Streamlit dashboard provides a full operational view for the head of optimisation:
+Modular Python implementation with separate layers for asset modelling, market optimisation, P&L calculation, and risk analysis. Each layer is standalone and can be developed independently.
 
-- **Morning briefing** — Green/amber/red market signal based on price spread and negative price detection
-- **Strategy recommendations** — Per-asset actionable guidance based on market conditions and risk metrics
-- **Portfolio P&L** — Revenue, cost, and net P&L per asset and portfolio total
-- **Price curve** — 48-period settlement price chart
-- **Asset status** — Live SOC, available capacity, and solar output per asset
-- **Risk summary** — Sharpe ratio, VaR (95%), P&L volatility, concentration risk
-- **DC tender forecast** — 4-day forward NESO Dynamic Containment requirements
-- **Dispatch schedule** — Period-by-period charge/discharge decisions per asset
-
----
-
-## Optimiser Architecture
-
-The platform is built in modular layers — each market layer plugs in independently:
-
-```
-Rules-based optimiser (built)
-    ↓
-Forward-looking DA optimiser (built)
-    ↓
-LP optimisation — PuLP / Google OR-Tools (in progress)
-    ↓
-Intraday layer (planned)
-    ↓
-BM layer (planned)
-    ↓
-Stochastic optimisation under price uncertainty (planned)
-    ↓
-AI agent layer — Claude API (planned)
-```
+| Component | File |
+|---|---|
+| Asset model | `models/battery.py` |
+| Rules-based optimiser | `models/optimiser.py` |
+| Forward-looking DA optimiser | `models/optimiser_da.py` |
+| LP optimiser (PuLP) | `models/optimiser_lp.py` |
+| P&L calculator | `models/pnl.py` |
+| Risk layer | `models/risk.py` |
+| Operations dashboard | `dashboard.py` |
 
 ---
 
-## Risk Layer
+## Stack
 
-The risk module calculates:
-- **Value at Risk (VaR)** at 95% and 99% confidence levels
-- **Sharpe ratio** — return per unit of risk across settlement periods
-- **P&L volatility** — standard deviation of period-level net P&L
-- **Scenario analysis** — stress tests across ±20% and ±50% price scenarios
-- **Concentration risk** — P&L contribution per asset with breach alerts
+Python 3.12 · PuLP (CBC solver) · Streamlit · pandas · numpy
 
 ---
 
-## Getting Started
+## Running
 
-### Prerequisites
 ```bash
-Python 3.12+
-pip install requests pandas numpy streamlit pulp
-```
-
-### Run data pipelines
-```bash
+# Pull latest market data
 cd scripts
 python fetch_da_prices.py
-python fetch_bmrs.py
 python fetch_dc_tenders.py
 python fetch_weather.py
 python fetch_solar.py
-```
+python fetch_bmrs.py
 
-### Run optimiser and P&L
-```bash
-cd models
-python optimiser_da.py
+# Run optimisers
+cd ../models
+python optimiser_lp.py
 python pnl.py
 python risk.py
-```
 
-### Launch war room dashboard
-```bash
+# Launch dashboard
+cd ..
 streamlit run dashboard.py
 ```
 
 ---
 
-## Tech Stack
+## Status
 
-| Component | Tool |
-|---|---|
-| Core language | Python 3.12 |
-| Data storage | CSV → SQLite (planned) |
-| Dashboard | Streamlit |
-| Optimisation | PuLP / Google OR-Tools |
-| Version control | GitHub |
-
----
-
-## Roadmap
-
-- [x] Data pipelines (Elexon, NESO, weather, solar)
-- [x] Battery asset model with SOC constraints
-- [x] Rules-based optimiser
-- [x] Forward-looking DA optimiser with capacity reservation
-- [x] P&L calculator
-- [x] Risk layer (VaR, Sharpe, scenarios)
-- [x] War room dashboard
-- [ ] LP optimisation upgrade
-- [ ] Intraday optimiser layer
-- [ ] BM optimiser layer
-- [ ] Stochastic optimisation
-- [ ] AI agent integration
-- [ ] Monthly P&L reporting
-- [ ] Telegram alerts
-- [ ] Phase 2 shadow trading
-
----
-
-## Author
-
-**Eugene Sovathana Kem**
-GB Electricity Market Analyst | Energy Economics MSc (Paul Stevens Prize, University of Dundee) | Data Analytics Certificate, Imperial College Business School
-
-[LinkedIn](https://www.linkedin.com/in/eugenekem) | Glasgow, UK
+Active development. See `BRIEFING.md` for architecture and roadmap.
