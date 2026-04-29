@@ -118,3 +118,15 @@
 
 ### Next session:
 - Integrate LP optimiser into dashboard OR build intraday layer
+---
+## Session — 2026-04-29 22:57
+
+### Built this session:
+- 
+
+### Decisions made:
+- 
+
+### Next session:
+- 
+

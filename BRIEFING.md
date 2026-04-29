@@ -1,38 +1,49 @@
-# VPP Optimiser — Project Briefing
-**Version:** 8.0
-**Status:** In Progress — LP optimiser validated, dashboard integration next
+# Virtual Power Plant (VPP) Project — Master Briefing Document
+**Version:** 6.0
+**Date:** April 2026
+**Status:** In Progress — P&L Calculator Complete, Risk Layer Next
 
 ---
 
-## 1. Project Overview
+## 1. Project Goal & Ambition
 
-A Virtual Power Plant optimisation platform for the GB energy market. Models battery dispatch across day-ahead, intraday, balancing mechanism, and ancillary service markets using real published market data from Elexon, NESO, Open-Meteo, and Sheffield Solar.
+Build a realistic Virtual Power Plant (VPP) simulation model that mirrors real-world asset optimisation operations in the GB energy market. The ultimate goal is to develop the skills, processes, and team workflows needed to operate as a professional VPP optimisation and trading desk.
 
-The project develops in phases — historical replay first, then shadow trading, then live operation. Each phase validates the previous layer before scaling.
+This is not a quick-build project. It is being developed carefully and deliberately to create genuine operational experience — with ambition to use this platform as a portfolio piece for senior roles in energy storage optimisation and trading, or as the foundation for an independent consultancy or startup.
 
 ---
 
-## 2. Asset Portfolio
+## 2. Business Vision
 
-| Asset | Type | Duration | Battery (MW) | Solar (MW) | Region | DNO |
+Position as a team of asset optimisers, traders, short-term planners and risk analysts operating across multiple GB wholesale and balancing markets.
+
+The platform will be smart, polished, and credible — grounded in real GB market data, real asset constraints, and real market structure.
+
+Vision: A full trading operations platform — a war room dashboard where the user sits as head of optimisation, sees all assets live, manages positions, reviews P&L, monitors risk, and makes decisions alongside the optimiser.
+
+**This is not a quick-build project. It is being developed carefully and deliberately to create genuine operational experience — with ambition to use this platform as a portfolio piece for senior roles in energy storage optimisation and trading, or as the foundation for an independent consultancy or startup.
+
+---
+
+## 3. Asset Portfolio
+
+| Asset | Type | Duration | MW (Battery) | MW (Solar) | Region | DNO |
 |---|---|---|---|---|---|---|
-| Battery 1 | Standalone | 2-hour | 10 | — | North Scotland | SSEN Transmission |
-| Battery 2 | Standalone | 4-hour | 25 | — | North England | Northern Powergrid |
-| Battery 3 | Standalone | 4-hour | 50 | — | South England | National Grid (NGET) |
-| Battery 4 | Co-located | 4-hour | 20 | 15 | South Scotland | SP Transmission |
-| Battery 5 | Co-located | 4-hour | 40 | 30 | South England | National Grid (NGET) |
+| Battery 1 | Standalone | 2-hour | 10 MW | — | North Scotland | SSEN Transmission |
+| Battery 2 | Standalone | 4-hour | 25 MW | — | North England | Northern Powergrid |
+| Battery 3 | Standalone | 4-hour | 50 MW | — | South England | National Grid (NGET) |
+| Battery 4 | Co-located + Solar | 4-hour | 20 MW | 15 MW | South Scotland | SP Transmission |
+| Battery 5 | Co-located + Solar | 4-hour | 40 MW | 30 MW | South England | National Grid (NGET) |
 
-**Total capacity:** ~145 MW battery, 45 MW solar
+**Total battery capacity:** ~145 MW | **Total solar capacity:** 45 MW
 
-**DA capacity reservation rules:**
-- Battery 1: 50% reserved for intraday and BM
-- Battery 2-5: 30% reserved for intraday and BM
-
-**Battery operating parameters:** 90% round-trip efficiency, 10% SOC floor, 90% SOC ceiling, 50% initial SOC.
+**DA Capacity Reservation Rules:**
+- Battery 1: 50% reserved — nimble, prioritise intraday and BM
+- Battery 2-5: 30% reserved — balanced across markets
 
 ---
 
-## 3. Target Markets
+## 4. Target Markets
 
 | Market | Venue | Notes |
 |---|---|---|
@@ -45,98 +56,53 @@ The project develops in phases — historical replay first, then shadow trading,
 
 ---
 
-## 4. Data Sources
+## 5. Data Sources & Pipelines
 
-All pipelines operational, data saved to `/data`, pushed to GitHub.
+| Data | Source | Script | Status |
+|---|---|---|---|
+| System prices (SSP/SBP) | Elexon BMRS | `fetch_bmrs.py` | ✅ Live |
+| Market index prices (MID) | Elexon BMRS | `fetch_da_prices.py` | ✅ Live |
+| DC forecast (4-day) | NESO Data Portal | `fetch_dc_tenders.py` | ✅ Live |
+| Weather | Open-Meteo | `fetch_weather.py` | ✅ Live |
+| Solar generation | Sheffield Solar PV_Live | `fetch_solar.py` | ✅ Live |
 
-| Data | Source | Script |
+---
+
+## 6. Tech Stack
+
+| Component | Tool | Notes |
 |---|---|---|
-| System prices (SSP/SBP) | Elexon BMRS | `fetch_bmrs.py` |
-| Market index prices (MID) | Elexon BMRS | `fetch_da_prices.py` |
-| DC forecast (4-day) | NESO Data Portal | `fetch_dc_tenders.py` |
-| Weather | Open-Meteo | `fetch_weather.py` |
-| Solar generation | Sheffield Solar PV_Live | `fetch_solar.py` |
-
-**Known gap:** Real-time intraday continuous prices not freely available. Workaround: approximate intraday using DA + BM spread.
-
-**Design principle:** No paid data subscriptions in the short to medium term.
+| Core language | Python 3.12.4 | Confirmed |
+| Data storage | CSV → SQLite | Currently CSV |
+| Dashboard | Streamlit | War room operations platform |
+| Optimisation engine | PuLP / Google OR-Tools | LP layer after rules-based |
+| Version control | GitHub | github.com/eugenekem/vpp-optimiser |
 
 ---
 
-## 5. Tech Stack
-
-| Component | Tool |
-|---|---|
-| Core language | Python 3.12.4 |
-| Data storage | CSV → SQLite planned |
-| Dashboard | Streamlit |
-| Optimisation | PuLP with CBC solver |
-| Version control | GitHub |
-
----
-
-## 6. Optimiser Architecture
+## 7. Optimiser Architecture
 
 | File | Layer | Status |
 |---|---|---|
 | `battery.py` | Asset model | ✅ Built |
 | `optimiser.py` | Rules-based optimiser | ✅ Built |
 | `optimiser_da.py` | Forward-looking DA optimiser | ✅ Built |
-| `optimiser_lp.py` | LP optimiser | ✅ Built |
-| `compare_optimisers.py` | Benchmark harness | ✅ Built |
 | `pnl.py` | P&L calculator | ✅ Built |
-| `risk.py` | Risk layer | ✅ Built |
-| `dashboard.py` | Operations dashboard | ✅ Built |
 | `optimiser_id.py` | Intraday layer | ⬜ To do |
 | `optimiser_bm.py` | BM layer | ⬜ To do |
+| `risk.py` | Risk layer (VaR, scenarios) | ⬜ To do |
 | `dispatcher.py` | Coordinates all layers | ⬜ To do |
 
-**Optimisation roadmap:**
-1. ✅ Rules-based
-2. ✅ Forward-looking DA
-3. ✅ LP optimisation
-4. ⬜ Stochastic optimisation under price uncertainty
-5. ⬜ AI agent layer
-
 ---
 
-## 7. LP Formulation
+## 8. Team Structure
 
-**Decision variables**
-- c(t) = charge power in period t (MW)
-- d(t) = discharge power in period t (MW)
-- s(t) = state of charge in period t (MWh)
-
-**Objective function**
-```
-Maximise: Σ [d(t) × p(t) × 0.5 - c(t) × p(t) × 0.5] for t in T (48 periods)
-```
-
-**Constraints**
-1. Energy balance: s(t) = s(t-1) + c(t) × 0.5 × η - d(t) × 0.5 / η
-2. SOC limits: s_min × E_max ≤ s(t) ≤ s_max × E_max
-3. Charge power: 0 ≤ c(t) ≤ P_max × (1 - DA_reservation)
-4. Discharge power: 0 ≤ d(t) ≤ P_max × (1 - DA_reservation)
-5. Initial SOC: s(0) = 0.50 × E_max
-
-**Validation:** LP outperformed rules-based by 12.2% and forward-looking DA by 24.1% on the same day's prices under identical capacity constraints. Benchmark documented in `compare_optimisers.py`.
-
----
-
-## 8. Dashboard
-
-| Section | Status |
+| Role | Responsibility |
 |---|---|
-| Morning briefing (market signal) | ✅ Built |
-| Strategy recommendations | ✅ Built |
-| Portfolio P&L | ✅ Built |
-| Price curve | ✅ Built |
-| Asset status | ✅ Built |
-| Risk summary | ✅ Built |
-| DC tender forecast | ✅ Built |
-| Dispatch schedule | ✅ Built |
-| Monthly P&L view | ⬜ To do |
-| Telegram alerts | ⬜ To do |
+| Optimisers | Asset dispatch, charge/discharge scheduling, market stacking |
+| Traders | DA and intraday position management, DC tender management |
+| Short-term Planners | Intraday and BM real-time decisions |
+| Risk | Exposure monitoring, VaR, scenario analysis, price risk |
 
 ---
 
@@ -151,70 +117,56 @@ Maximise: Σ [d(t) × p(t) × 0.5 - c(t) × p(t) × 0.5] for t in T (48 periods)
 
 ## 10. Development Phases
 
-- **Phase 1** — Historical replay on real published data
-- **Phase 2** — Shadow trading (real-time decisions, no real trades)
-- **Phase 3** — Live single asset operation
-- **Phase 4** — Scale to full portfolio
-- **Phase 5** — Residential solar aggregation (future scope, parked)
+- **Phase 1** — Historical Replay
+- **Phase 2** — Shadow Trading (Priority Phase)
+- **Phase 3** — Live Single Asset (Battery 1, BM first)
+- **Phase 4** — Scale Up
+- **Phase 5** — Residential Solar Aggregation (parked)
+- **Phase 6+** — International markets, AI optimisation, full commercial operation
 
 ---
 
-## 11. Progress
+## 11. Progress To Date
 
 | Task | Status |
 |---|---|
-| Project structure and GitHub repo | ✅ Done |
+| Project folder and GitHub repo | ✅ Done |
+| Python environment (3.12.4) | ✅ Done |
 | All 5 data pipelines | ✅ Done |
 | Battery asset model | ✅ Done |
 | Rules-based optimiser | ✅ Done |
 | Forward-looking DA optimiser | ✅ Done |
-| LP optimiser (with validated uplift) | ✅ Done |
 | P&L calculator | ✅ Done |
-| Risk layer | ✅ Done |
-| Operations dashboard | ✅ Done |
-| Dashboard LP integration | ⬜ Next |
+| Risk layer (VaR, scenario analysis) | ⬜ Next |
 | Intraday optimiser layer | ⬜ To do |
 | BM optimiser layer | ⬜ To do |
-| Stochastic optimisation | ⬜ To do |
-| AI agent layer | ⬜ To do |
+| War room Streamlit dashboard | ⬜ To do |
 | Settlement reconciliation | ⬜ To do |
 | Phase 1 historical replay | ⬜ To do |
 | Phase 2 shadow trading | ⬜ To do |
 
 ---
 
-## 12. Engineering Principles
+## 12. Key Principles
 
-- Modular architecture — each layer plugs in independently
-- No double-commitment of asset capacity across markets
-- Risk-adjusted return is the target metric, not just maximum revenue
-- Free-tier data only in the short to medium term
-- Validate each layer against baselines before moving on
-- Pause for academic reading before major new optimisation techniques
-
----
-
-## 13. Code Quality Roadmap
-
-Scheduled after LP optimiser, intraday layer, and BM layer are functionally complete:
-
-1. Type hints on all public functions
-2. Google-style docstrings on all classes and functions
-3. Unit tests (pytest) covering battery logic, P&L, risk metrics, optimiser outputs
-4. Proper package structure with `__init__.py`
-5. Input validation with clear error messages
-6. Python `logging` module replacing `print` statements
+- Plan carefully before executing
+- Build modularly — each layer plugs in independently
+- Do not double-commit asset capacity across markets
+- Risk-adjusted revenue is the target, not just maximum revenue
+- No paid data subscriptions in the short to medium term
+- Academic research will inform optimisation — pause and read when Claude flags it
+- Paste this document at the start of every new Claude session
 
 ---
 
-## 14. Open Research Questions
+## 13. Open Questions / To Decide Later
 
-- Stochastic optimisation — price uncertainty modelling approaches
-- Battery degradation cost integration into LP objective
-- Intraday continuous price approximation methodology
-- BM bid/offer strategy under imbalance exposure
-- Export/import limits per asset connection point
+- Export and import limits per asset
+- Battery degradation modelling approach
+- Gantt chart / project timeline
+- Cost of investment analysis — Phase 4 onwards
+- LP optimisation upgrade — after rules-based layer is validated
 
 ---
 
-*Update to the next version when major decisions or scope changes are agreed.*
+*Update to Version 7 when new decisions or scope changes are agreed.*
