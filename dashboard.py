@@ -50,10 +50,36 @@ def load_schedule(date):
         return pd.read_csv(path)
     return None
 
+@st.cache_data
+def load_lp_schedule(date):
+    path = f"data/lp_schedule_{date}.csv"
+    if os.path.exists(path):
+        return pd.read_csv(path)
+    return None
+
 df_prices = load_prices(yesterday)
 df_pnl = load_pnl(yesterday)
 df_dc = load_dc(yesterday)
 df_schedule = load_schedule(yesterday)
+df_lp_schedule = load_lp_schedule(yesterday)
+
+# --- Derive LP P&L from LP schedule ---
+def compute_lp_pnl(df_lp):
+    """Compute P&L directly from LP schedule without needing pnl.py to re-run."""
+    rows = []
+    for _, row in df_lp.iterrows():
+        revenue = row["power_mw"] * row["price"] * 0.5 if row["action"] == "discharge" else 0
+        cost = row["power_mw"] * row["price"] * 0.5 if row["action"] == "charge" else 0
+        rows.append({
+            "asset": row["asset"],
+            "settlement_period": row["settlement_period"],
+            "revenue": revenue,
+            "cost": cost,
+            "net_pnl": revenue - cost
+        })
+    return pd.DataFrame(rows)
+
+df_lp_pnl = compute_lp_pnl(df_lp_schedule) if df_lp_schedule is not None else None
 
 # --- Header ---
 st.markdown("## ⚡ VPP War Room")
@@ -182,23 +208,28 @@ st.divider()
 # --- P&L Summary ---
 st.markdown("### Portfolio P&L")
 
-if df_pnl is not None:
-    total_revenue = df_pnl["revenue"].sum()
-    total_cost = df_pnl["cost"].sum()
+# Determine which P&L to show — LP preferred, DA fallback
+active_pnl = df_lp_pnl if df_lp_pnl is not None else df_pnl
+pnl_source_label = "LP optimiser" if df_lp_pnl is not None else "DA optimiser"
+
+if active_pnl is not None:
+    total_revenue = active_pnl["revenue"].sum()
+    total_cost = active_pnl["cost"].sum()
     total_net = total_revenue - total_cost
 
+    st.caption(f"Source: {pnl_source_label}")
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Total revenue", f"£{total_revenue:,.0f}")
     with col2:
         st.metric("Total cost", f"£{total_cost:,.0f}")
     with col3:
-        st.metric("Net P&L", f"£{total_net:,.0f}", delta=f"£{total_net:,.0f}")
+        st.metric("Net P&L", f"£{total_net:,.0f}", delta=f"£{total_net:,.0f}", delta_color="normal")
 
     st.markdown("**P&L by asset**")
     asset_data = []
-    for asset_name in df_pnl["asset"].unique():
-        df_asset = df_pnl[df_pnl["asset"] == asset_name]
+    for asset_name in active_pnl["asset"].unique():
+        df_asset = active_pnl[active_pnl["asset"] == asset_name]
         revenue = df_asset["revenue"].sum()
         cost = df_asset["cost"].sum()
         net = revenue - cost
@@ -209,6 +240,21 @@ if df_pnl is not None:
             "Net P&L (£)": f"£{net:,.0f}"
         })
     st.dataframe(pd.DataFrame(asset_data), use_container_width=True, hide_index=True)
+
+    # --- LP vs DA P&L comparison chart ---
+    if df_lp_pnl is not None and df_pnl is not None:
+        st.markdown("**LP vs DA optimiser — net P&L by asset**")
+        lp_by_asset = df_lp_pnl.groupby("asset")["net_pnl"].sum()
+        da_by_asset = df_pnl.groupby("asset")["net_pnl"].sum()
+        compare_df = pd.DataFrame({
+            "LP optimiser (£)": lp_by_asset,
+            "DA optimiser (£)": da_by_asset
+        }).fillna(0)
+        st.bar_chart(compare_df, use_container_width=True)
+        lp_total = df_lp_pnl["net_pnl"].sum()
+        da_total = df_pnl["net_pnl"].sum()
+        uplift = ((lp_total - da_total) / abs(da_total) * 100) if da_total != 0 else 0
+        st.caption(f"LP total: £{lp_total:,.0f} | DA total: £{da_total:,.0f} | LP uplift: {uplift:+.1f}%")
 
 st.divider()
 
@@ -241,12 +287,14 @@ st.divider()
 # --- Risk summary ---
 st.markdown("### Risk summary")
 
-if df_pnl is not None:
-    period_pnl = df_pnl.groupby("settlement_period")["net_pnl"].sum().values
+risk_pnl = df_lp_pnl if df_lp_pnl is not None else df_pnl
+
+if risk_pnl is not None:
+    period_pnl = risk_pnl.groupby("settlement_period")["net_pnl"].sum().values
     var_95 = calculate_var(period_pnl, 0.95)
     volatility = calculate_volatility(period_pnl)
     sharpe = calculate_sharpe(period_pnl)
-    asset_pnl, concentration = concentration_risk(df_pnl)
+    asset_pnl_risk, concentration = concentration_risk(risk_pnl)
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -277,18 +325,25 @@ if dc_files:
     st.dataframe(df_dc, use_container_width=True, hide_index=True)
 else:
     st.info("No DC forecast data available.")
+
+st.divider()
+
 # --- Dispatch Schedule ---
 st.markdown("### Dispatch schedule")
 
-if df_schedule is not None:
-    st.caption("DA optimiser decisions — period by period")
+# Use LP schedule if available, DA as fallback
+active_schedule = df_lp_schedule if df_lp_schedule is not None else df_schedule
+schedule_label = "LP optimiser" if df_lp_schedule is not None else "DA optimiser"
+
+if active_schedule is not None:
+    st.caption(f"Source: {schedule_label} — period by period decisions")
 
     asset_tabs = st.tabs(["Battery_1", "Battery_2", "Battery_3", "Battery_4", "Battery_5"])
 
     for i, tab in enumerate(asset_tabs):
         asset_name = f"Battery_{i+1}"
         with tab:
-            df_asset = df_schedule[df_schedule["asset"] == asset_name].copy()
+            df_asset = active_schedule[active_schedule["asset"] == asset_name].copy()
             df_asset = df_asset[["settlement_period", "price", "action", "power_mw", "soc"]].copy()
             df_asset.columns = ["Period", "Price (£/MWh)", "Action", "Power (MW)", "SOC (%)"]
 
@@ -300,17 +355,45 @@ if df_schedule is not None:
                 else:
                     return [""] * len(row)
 
-            styled = df_asset.style.apply(highlight_action, axis=1)
+            styled = (
+                df_asset.style
+                .apply(highlight_action, axis=1)
+                .format({
+                    "Price (£/MWh)": "{:.2f}",
+                    "Power (MW)": "{:.2f}",
+                    "SOC (%)": "{:.1f}"
+                })
+            )
             st.dataframe(styled, use_container_width=True, hide_index=True)
 
             charges = len(df_asset[df_asset["Action"] == "charge"])
             discharges = len(df_asset[df_asset["Action"] == "discharge"])
             holds = len(df_asset[df_asset["Action"] == "hold"])
             st.caption(f"Charge: {charges} periods | Discharge: {discharges} periods | Hold: {holds} periods")
+
+            # --- SOC curve chart ---
+            st.markdown("**SOC curve — state of charge across 48 periods**")
+            soc_data = df_asset[["Period", "SOC (%)"]].set_index("Period")
+            st.line_chart(soc_data, use_container_width=True)
+
+            # --- Dispatch overlaid on price curve ---
+            st.markdown("**Dispatch vs price — charge/discharge overlaid on price curve**")
+
+            # Rebuild from active_schedule to keep numeric types
+            df_chart = active_schedule[active_schedule["asset"] == asset_name].copy()
+            df_chart = df_chart.rename(columns={"settlement_period": "Period"})
+
+            chart_data = pd.DataFrame({
+                "Price (£/MWh)": df_chart.set_index("Period")["price"],
+                "Charge (MW)": df_chart[df_chart["action"] == "charge"].set_index("Period")["power_mw"],
+                "Discharge (MW)": df_chart[df_chart["action"] == "discharge"].set_index("Period")["power_mw"],
+            }).fillna(0)
+
+            st.line_chart(chart_data, use_container_width=True)
+            st.caption("Price curve with charge and discharge MW overlaid. Charges should cluster at low prices, discharges at high prices.")
+
 else:
-    st.info("No dispatch schedule available. Run optimiser_da.py first.")
-
-
+    st.info("No dispatch schedule available. Run optimiser_lp.py first.")
 
 st.divider()
-st.caption(f"VPP War Room | Data as of {yesterday} | github.com/eugenekem/vpp-optimiser")
+st.caption(f"VPP War Room | Data as of {yesterday} | LP optimiser active | github.com/eugenekem/vpp-optimiser")
