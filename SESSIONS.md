@@ -122,6 +122,27 @@
 ## Session — 2026-04-29 22:57
 
 ### Built this session:
+- Dashboard LP integration — LP schedule now drives P&L, risk, and dispatch sections
+- compute_lp_pnl() derives P&L directly from LP schedule without re-running pnl.py
+- LP preferred throughout, DA optimiser as fallback
+- New charts per asset: SOC curve across 48 periods, dispatch vs price overlay
+- LP vs DA comparison bar chart with uplift % caption
+- Decimal formatting fix on dispatch table
+- 
+
+### Decisions made:
+- DA fallback to be removed once LP is permanent daily default
+- Charts confirmed LP is behaving correctly — charges at price troughs, discharges at peaks
+- 
+
+### Next session:
+- 
+
+
+---
+## Session — 2026-04-30 21:53
+
+### Built this session:
 - 
 
 ### Decisions made:
