@@ -143,6 +143,26 @@
 ## Session — 2026-04-30 21:53
 
 ### Built this session:
+- config.py — single source of truth for DA/ID/BM capacity splits
+- Updated optimiser_lp.py and optimiser_id.py to import from config
+- optimiser_bm.py — BM layer using real SSP/SBP prices from Elexon BMRS
+- Three-way capacity split: Battery 1 DA=40% ID=30% BM=30%, others DA=50% ID=20% BM=30%
+
+### Decisions made:
+- BM needs its own capacity slice — can't share with ID
+- Config centralises all splits so one change updates all three layers
+- SSP=SBP today indicates balanced system — BM spread behaviour to observe on volatile days
+
+
+
+### Next session:
+- 
+
+
+---
+## Session — 2026-04-30 21:55
+
+### Built this session:
 - 
 
 ### Decisions made:
