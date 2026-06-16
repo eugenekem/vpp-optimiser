@@ -10,48 +10,38 @@ from config import BM_RESERVATION, DURATION, SOC_INIT
 
 # --- Balancing Mechanism Optimiser ---
 #
-# The BM layer optimises the capacity slice reserved for the Balancing Mechanism.
-# Unlike DA and ID, BM uses real SSP/SBP prices from Elexon BMRS.
+# Optimises the BM capacity slice using real SSP/SBP prices from Elexon BMRS.
+# Discharge earns SSP, charge costs SBP.
 #
-# SSP (System Sell Price) — price paid when system is SHORT, operator needs discharge
-# SBP (System Buy Price) — price paid when system is LONG, operator needs charge
-#
-# BM logic:
-#   Discharge when SSP is high (system short — you get paid well to generate)
-#   Charge when SBP is low (system long — you get paid to absorb excess)
-#
-# Effective BM price per period:
-#   If discharging → use SSP
-#   If charging    → use SBP (negative cost = revenue when SBP < market price)
-#
-# Capacity slice defined in config.py — BM_RESERVATION per asset (30% all assets).
+# initial_soc_mwh: starting SOC handed off from the ID layer (sequential chain).
 
 
-def optimise_battery_bm(battery, ssp_series, sbp_series, reserved_fraction):
+def optimise_battery_bm(battery, ssp_series, sbp_series, reserved_fraction, initial_soc_mwh=None):
     """
     Solve the LP dispatch problem for the BM capacity slice.
-
-    Uses SSP for discharge revenue and SBP for charge cost.
-    BM slice is the reserved fraction of battery MW capacity.
 
     Parameters
     ----------
     battery : Battery
-        Battery asset object.
     ssp_series : pd.Series
         System Sell Price series indexed by settlement period.
     sbp_series : pd.Series
         System Buy Price series indexed by settlement period.
     reserved_fraction : float
-        Fraction of battery capacity reserved for BM (BM_RESERVATION).
+        Fraction of battery MW reserved for BM (BM_RESERVATION).
+    initial_soc_mwh : float or None
+        Starting SOC in MWh, handed off from ID layer. Defaults to SOC_INIT if None.
 
     Returns
     -------
-    tuple[pd.DataFrame, float]
-        Schedule DataFrame and objective value (net revenue £).
+    tuple[pd.DataFrame, float, float]
+        Schedule DataFrame, objective value (£), final SOC in MWh.
     """
     T = list(ssp_series.index)
     bm_capacity_mw = battery.mw * reserved_fraction
+
+    if initial_soc_mwh is None:
+        initial_soc_mwh = SOC_INIT * battery.capacity_mwh
 
     prob = pulp.LpProblem(f"bm_dispatch_{battery.name}", pulp.LpMaximize)
 
@@ -63,18 +53,14 @@ def optimise_battery_bm(battery, ssp_series, sbp_series, reserved_fraction):
         upBound=battery.soc_max * battery.capacity_mwh
     )
 
-    # Objective: discharge earns SSP, charge costs SBP
     prob += pulp.lpSum([
         discharge[t] * ssp_series[t] * DURATION - charge[t] * sbp_series[t] * DURATION
         for t in T
     ]), "bm_net_revenue"
 
-    # Energy balance constraints
-    initial_soc = SOC_INIT * battery.capacity_mwh
-
     for i, t in enumerate(T):
         if i == 0:
-            prob += soc[t] == initial_soc + charge[t] * DURATION * battery.efficiency - discharge[t] * DURATION / battery.efficiency
+            prob += soc[t] == initial_soc_mwh + charge[t] * DURATION * battery.efficiency - discharge[t] * DURATION / battery.efficiency
         else:
             prev_t = T[i - 1]
             prob += soc[t] == soc[prev_t] + charge[t] * DURATION * battery.efficiency - discharge[t] * DURATION / battery.efficiency
@@ -113,10 +99,13 @@ def optimise_battery_bm(battery, ssp_series, sbp_series, reserved_fraction):
             "energy_mwh": round(s, 2)
         })
 
-    return pd.DataFrame(results), pulp.value(prob.objective)
+    df_results = pd.DataFrame(results)
+    final_soc_mwh = df_results["energy_mwh"].iloc[-1] if len(df_results) > 0 else initial_soc_mwh
+
+    return df_results, pulp.value(prob.objective), final_soc_mwh
 
 
-# --- Run for all 5 assets ---
+# --- Run for all 5 assets (standalone test — uses default 50% start) ---
 
 if __name__ == "__main__":
     yesterday = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -127,8 +116,6 @@ if __name__ == "__main__":
         print("Run fetch_bmrs.py first")
     else:
         df_bmrs = pd.read_csv(bmrs_file)
-
-        # Align to settlement periods 1-48
         df_bmrs = df_bmrs[df_bmrs["settlementPeriod"] <= 48].copy()
         ssp_series = df_bmrs.set_index("settlementPeriod")["systemSellPrice"]
         sbp_series = df_bmrs.set_index("settlementPeriod")["systemBuyPrice"]
@@ -145,7 +132,7 @@ if __name__ == "__main__":
 
         for battery in assets:
             reserved = BM_RESERVATION[battery.name]
-            results, obj_value = optimise_battery_bm(battery, ssp_series, sbp_series, reserved)
+            results, obj_value, final_soc = optimise_battery_bm(battery, ssp_series, sbp_series, reserved)
             all_results.append(results)
             total_bm_revenue += obj_value
 

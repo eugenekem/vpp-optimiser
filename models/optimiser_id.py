@@ -14,6 +14,8 @@ from config import ID_RESERVATION, DURATION, SOC_INIT, ID_SPREAD_MEAN, ID_SPREAD
 # Re-optimises the ID capacity slice using simulated intraday prices.
 # Intraday price = DA price + Normal(mean=0, std=5) spread per period.
 # Capacity slice defined in config.py — ID_RESERVATION per asset.
+#
+# initial_soc_mwh: starting SOC handed off from the DA layer (sequential chain).
 
 
 def simulate_intraday_prices(da_prices, seed=ID_RANDOM_SEED):
@@ -22,9 +24,29 @@ def simulate_intraday_prices(da_prices, seed=ID_RANDOM_SEED):
     return pd.Series(da_prices.values + spread, index=da_prices.index)
 
 
-def optimise_battery_id(battery, id_prices, reserved_fraction):
+def optimise_battery_id(battery, id_prices, reserved_fraction, initial_soc_mwh=None):
+    """
+    Solve the LP dispatch problem for the reserved intraday capacity slice.
+
+    Parameters
+    ----------
+    battery : Battery
+    id_prices : pd.Series
+    reserved_fraction : float
+        Fraction of battery MW reserved for ID (ID_RESERVATION).
+    initial_soc_mwh : float or None
+        Starting SOC in MWh, handed off from DA layer. Defaults to SOC_INIT if None.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, float, float]
+        Schedule DataFrame, objective value (£), final SOC in MWh.
+    """
     T = list(id_prices.index)
     id_capacity_mw = battery.mw * reserved_fraction
+
+    if initial_soc_mwh is None:
+        initial_soc_mwh = SOC_INIT * battery.capacity_mwh
 
     prob = pulp.LpProblem(f"id_dispatch_{battery.name}", pulp.LpMaximize)
 
@@ -41,11 +63,9 @@ def optimise_battery_id(battery, id_prices, reserved_fraction):
         for t in T
     ]), "id_net_revenue"
 
-    initial_soc = SOC_INIT * battery.capacity_mwh
-
     for i, t in enumerate(T):
         if i == 0:
-            prob += soc[t] == initial_soc + charge[t] * DURATION * battery.efficiency - discharge[t] * DURATION / battery.efficiency
+            prob += soc[t] == initial_soc_mwh + charge[t] * DURATION * battery.efficiency - discharge[t] * DURATION / battery.efficiency
         else:
             prev_t = T[i - 1]
             prob += soc[t] == soc[prev_t] + charge[t] * DURATION * battery.efficiency - discharge[t] * DURATION / battery.efficiency
@@ -81,8 +101,13 @@ def optimise_battery_id(battery, id_prices, reserved_fraction):
             "energy_mwh": round(s, 2)
         })
 
-    return pd.DataFrame(results), pulp.value(prob.objective)
+    df_results = pd.DataFrame(results)
+    final_soc_mwh = df_results["energy_mwh"].iloc[-1] if len(df_results) > 0 else initial_soc_mwh
 
+    return df_results, pulp.value(prob.objective), final_soc_mwh
+
+
+# --- Run for all 5 assets (standalone test — uses default 50% start) ---
 
 if __name__ == "__main__":
     yesterday = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -108,7 +133,7 @@ if __name__ == "__main__":
 
         for battery in assets:
             reserved = ID_RESERVATION[battery.name]
-            results, obj_value = optimise_battery_id(battery, id_prices, reserved)
+            results, obj_value, final_soc = optimise_battery_id(battery, id_prices, reserved)
 
             results["da_price"] = da_prices.values
             results["spread"] = (id_prices - da_prices).values.round(2)

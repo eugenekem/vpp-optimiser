@@ -10,16 +10,32 @@ from config import DA_RESERVATION, DURATION, SOC_INIT
 
 # --- LP Optimiser for single battery ---
 
-def optimise_battery_lp(battery, price_series, committed_capacity=1.0):
+def optimise_battery_lp(battery, price_series, committed_capacity=1.0, initial_soc_mwh=None):
     """
     Solve the LP dispatch problem for a single battery across all 48 periods.
 
-    Returns a DataFrame with the optimal schedule and the objective value.
+    Parameters
+    ----------
+    battery : Battery
+        Battery asset object.
+    price_series : pd.Series
+        Price series indexed by settlement period.
+    committed_capacity : float
+        Fraction of battery MW available to this layer.
+    initial_soc_mwh : float or None
+        Starting SOC in MWh. If None, defaults to SOC_INIT * capacity_mwh.
+        Used for sequential SOC handoff between DA -> ID -> BM layers.
 
-    Settlement period = 30 minutes = 0.5 hours. All MW × 0.5 = MWh per period.
+    Returns
+    -------
+    tuple[pd.DataFrame, float, float]
+        Schedule DataFrame, objective value (net revenue £), final SOC in MWh.
     """
 
     T = list(price_series.index)
+
+    if initial_soc_mwh is None:
+        initial_soc_mwh = SOC_INIT * battery.capacity_mwh
 
     prob = pulp.LpProblem(f"battery_dispatch_{battery.name}", pulp.LpMaximize)
 
@@ -43,11 +59,9 @@ def optimise_battery_lp(battery, price_series, committed_capacity=1.0):
     ]), "total_net_revenue"
 
     # --- Energy balance constraints ---
-    initial_soc = SOC_INIT * battery.capacity_mwh
-
     for i, t in enumerate(T):
         if i == 0:
-            prob += soc[t] == initial_soc + charge[t] * DURATION * battery.efficiency - discharge[t] * DURATION / battery.efficiency
+            prob += soc[t] == initial_soc_mwh + charge[t] * DURATION * battery.efficiency - discharge[t] * DURATION / battery.efficiency
         else:
             prev_t = T[i - 1]
             prob += soc[t] == soc[prev_t] + charge[t] * DURATION * battery.efficiency - discharge[t] * DURATION / battery.efficiency
@@ -83,10 +97,13 @@ def optimise_battery_lp(battery, price_series, committed_capacity=1.0):
             "energy_mwh": round(s, 2)
         })
 
-    return pd.DataFrame(results), pulp.value(prob.objective)
+    df_results = pd.DataFrame(results)
+    final_soc_mwh = df_results["energy_mwh"].iloc[-1] if len(df_results) > 0 else initial_soc_mwh
+
+    return df_results, pulp.value(prob.objective), final_soc_mwh
 
 
-# --- Run for all 5 assets ---
+# --- Run for all 5 assets (standalone test — uses default 50% start) ---
 
 if __name__ == "__main__":
     yesterday = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -108,7 +125,7 @@ if __name__ == "__main__":
 
         for battery in assets:
             committed = 1 - DA_RESERVATION[battery.name]
-            results, obj_value = optimise_battery_lp(battery, price_series, committed)
+            results, obj_value, final_soc = optimise_battery_lp(battery, price_series, committed)
             all_results.append(results)
             total_revenue += obj_value
 
