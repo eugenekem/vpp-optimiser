@@ -184,3 +184,16 @@
 ### Next session:
 - 
 
+
+---
+## Session — 2026-06-22 07:59 (BRIEFING v11.0)
+
+### Built this session:
+-
+
+### Decisions made:
+-
+
+### Next session:
+-
+
