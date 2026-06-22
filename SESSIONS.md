@@ -197,3 +197,17 @@
 ### Next session:
 -
 
+
+---
+## Session — 2026-06-22 08:05 (BRIEFING v11.0)
+
+### Built this session:
+- Update briefing to v11.0 and session log
+- Dashboard DA+ID+BM integration — P&L by market, nested dispatch tabs, SOC curves per layer
+
+### Decisions made:
+- (not recorded)
+
+### Next session:
+- (not recorded)
+
