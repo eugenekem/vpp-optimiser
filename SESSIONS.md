@@ -211,3 +211,16 @@
 ### Next session:
 - (not recorded)
 
+
+---
+## Session — 2026-06-23 21:33 (BRIEFING v11.0)
+
+### Built this session:
+- Fix dispatch charts — separate price and MW axes for readability
+
+### Decisions made:
+- (not recorded)
+
+### Next session:
+- (not recorded)
+
