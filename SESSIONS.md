@@ -240,3 +240,20 @@
 ### Next session:
 - (not recorded)
 
+
+---
+## Session — 2026-06-23 21:58 (BRIEFING v13.0)
+
+### Built this session:
+- Update briefing to v12.0 and session log
+- Phase 1 historical replay complete — 30 days, £1.9M portfolio P&L
+- Update BRIEFING.md to v12 — accurate state after dashboard completion
+- Update briefing to v11.0 and session log
+- Fix dispatch charts — separate price and MW axes for readability
+
+### Decisions made:
+- (not recorded)
+
+### Next session:
+- (not recorded)
+

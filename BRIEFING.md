@@ -1,6 +1,6 @@
 # VPP Optimiser — Project Briefing
-**Version:** 12.0
-**Status:** In Progress — Full DA+ID+BM dashboard complete, Phase 1 historical replay next
+**Version:** 13.0
+**Status:** Phase 1 historical replay complete — 30 days validated, Phase 2 shadow trading next
 
 ---
 
@@ -56,13 +56,13 @@ Three-way split across DA, ID, and BM. Defined centrally in `models/config.py` �
 
 All pipelines operational, data saved to `/data`, pushed to GitHub.
 
-| Data | Source | Script |
-|---|---|---|
-| System prices (SSP/SBP) | Elexon BMRS | `fetch_bmrs.py` |
-| Market index prices (MID) | Elexon BMRS | `fetch_da_prices.py` |
-| DC forecast (4-day) | NESO Data Portal | `fetch_dc_tenders.py` |
-| Weather | Open-Meteo | `fetch_weather.py` |
-| Solar generation | Sheffield Solar PV_Live | `fetch_solar.py` |
+| Data | Source | Script | Notes |
+|---|---|---|---|
+| System prices (SSP/SBP) | Elexon BMRS | `fetch_bmrs.py` | Accepts optional date arg |
+| Market index prices (MID) | Elexon BMRS | `fetch_da_prices.py` | Accepts optional date arg |
+| DC forecast (4-day) | NESO Data Portal | `fetch_dc_tenders.py` | |
+| Weather | Open-Meteo | `fetch_weather.py` | |
+| Solar generation | Sheffield Solar PV_Live | `fetch_solar.py` | |
 
 **Known gap:** Real-time intraday continuous prices not freely available. Workaround: simulate ID price as DA price + Normal(0, £5) spread.
 
@@ -97,8 +97,9 @@ All pipelines operational, data saved to `/data`, pushed to GitHub.
 | `compare_optimisers.py` | Benchmark harness | ✅ Built |
 | `pnl.py` | P&L calculator | ✅ Built |
 | `risk.py` | Risk layer | ✅ Built |
-| `dashboard.py` | Operations dashboard | ✅ Built — full DA+ID+BM integration |
-| `replay.py` | Phase 1 historical replay | ⬜ Next |
+| `dashboard.py` | Operations dashboard — full DA+ID+BM | ✅ Built |
+| `replay.py` | Phase 1 historical replay | ✅ Built |
+| `shadow.py` | Phase 2 shadow trading | ⬜ Next |
 
 **Optimisation roadmap:**
 1. ✅ Rules-based
@@ -131,7 +132,7 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 3. Charge/discharge power: 0 ≤ c(t), d(t) ≤ P_max × layer_capacity_fraction
 4. Initial SOC: handed off sequentially — DA starts at 50%, ID starts where DA ended, BM starts where ID ended
 
-**Critical fix (v11):** Each layer previously assumed an independent 50% starting SOC. Fixed by sequential SOC handoff — DA starts at 50%, ID starts where DA ended, BM starts where ID ended. Mirrors real market timing.
+**Critical fix (v11):** Sequential SOC handoff fixed independent-layer over-commitment bug. Mirrors real market timing.
 
 **Validation (2026-06-15):** Portfolio revenue £129,120, cost £82,852, net P&L £46,268. All assets within 10-90% SOC bounds.
 
@@ -158,11 +159,32 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 | Monthly P&L view | ⬜ To do |
 | Telegram alerts | ⬜ To do |
 
-**Chart fix (v12):** Dispatch vs price previously used a single axis — MW lines (3-15 MW) were invisible against £100+ price scale. Fixed by splitting into two separate charts: price line chart on its own axis, charge/discharge MW as a bar chart on its own axis.
+---
+
+## 10. Phase 1 Historical Replay Results
+
+**Script:** `models/replay.py`
+**Output:** `data/replay_pnl.csv`
+
+| Metric | Value |
+|---|---|
+| Period | 30 days (2026-05-24 to 2026-06-22) |
+| Days completed | 30 / 30 |
+| Days skipped | 0 |
+| Total net P&L | £1,895,106 |
+| Daily average | £63,170 |
+| Best day | £133,604 (2026-06-07) |
+| Worst day | £33,105 (2026-05-30) |
+| Positive days | 30 / 30 |
+| DA contribution | £1,117,359 (59%) |
+| ID contribution | £212,360 (11%) |
+| BM contribution | £565,386 (30%) |
+
+**Key finding:** All 30 days profitable. DA dominates contribution as expected given largest committed slice. BM meaningful at 30%. ID smallest due to simulated prices close to DA limiting additional uplift.
 
 ---
 
-## 10. Operating Model
+## 11. Operating Model
 
 - One day behind real time using published data
 - DA gate closure anchor: 12:00 noon day before delivery
@@ -172,17 +194,17 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 
 ---
 
-## 11. Development Phases
+## 12. Development Phases
 
-- **Phase 1** — Historical replay on real published data ⬜ Next
-- **Phase 2** — Shadow trading (real-time decisions, no real trades)
+- **Phase 1** — Historical replay on real published data ✅ Complete
+- **Phase 2** — Shadow trading (real-time decisions, no real trades) ⬜ Next
 - **Phase 3** — Live single asset operation
 - **Phase 4** — Scale to full portfolio
 - **Phase 5** — Residential solar aggregation (future scope, parked)
 
 ---
 
-## 12. Progress
+## 13. Progress
 
 | Task | Status |
 |---|---|
@@ -200,15 +222,16 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 | Risk layer | ✅ Done |
 | Operations dashboard — full DA+ID+BM | ✅ Done |
 | update_briefing.py — fixed overwrite bug | ✅ Done |
-| Phase 1 historical replay (replay.py) | ⬜ Next |
+| Phase 1 historical replay (replay.py) | ✅ Done |
+| Phase 2 shadow trading (shadow.py) | ⬜ Next |
 | Stochastic optimisation | ⬜ To do |
 | AI agent layer | ⬜ To do |
 | Settlement reconciliation | ⬜ To do |
-| Phase 2 shadow trading | ⬜ To do |
+| Monthly P&L dashboard view | ⬜ To do |
 
 ---
 
-## 13. Engineering Principles
+## 14. Engineering Principles
 
 - Modular architecture — each layer plugs in independently
 - No double-commitment of asset capacity across markets
@@ -216,12 +239,12 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 - Free-tier data only in the short to medium term
 - Validate each layer against baselines before moving on
 - Pause for academic reading before major new optimisation techniques
-- Shared physical constraints (like SOC) must be modelled jointly or sequentially — never assume independent layers can be safely summed post-hoc
+- Shared physical constraints (like SOC) must be modelled jointly or sequentially
 - Keep BRIEFING.md accurate after every session — it is the single source of truth
 
 ---
 
-## 14. Code Quality Roadmap
+## 15. Code Quality Roadmap
 
 Scheduled after stochastic optimisation and AI agent layer are functionally complete:
 
@@ -234,22 +257,23 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 
 ---
 
-## 15. Open Research Questions
+## 16. Open Research Questions
 
 - Stochastic optimisation — price uncertainty modelling approaches
 - Battery degradation cost integration into LP objective
-- Intraday continuous price approximation methodology — currently simulated, real data still unavailable free
+- Intraday continuous price approximation — currently simulated, real data unavailable free
 - BM bid/offer strategy under imbalance exposure
 - Export/import limits per asset connection point
 - Whether DA/ID/BM should eventually be jointly optimised in one LP rather than sequentially
 
 ---
 
-## 16. Known Issues / Lessons Learned
+## 17. Known Issues / Lessons Learned
 
-- **v6 → v11 documentation gap:** `update_briefing.py` previously hardcoded stale v6.0 content and silently overwrote BRIEFING.md on every run. Fixed in v11 — script now only logs sessions and pushes whatever is on disk. BRIEFING.md must be edited directly going forward.
+- **v6 → v11 documentation gap:** `update_briefing.py` previously hardcoded stale v6.0 content and silently overwrote BRIEFING.md. Fixed in v11 — script now only logs sessions and pushes whatever is on disk.
 - **Dispatch chart scale mismatch:** MW and price on same axis made MW lines invisible. Fixed in v12 by splitting into separate charts.
-- **SOC over-commitment bug:** Independent optimisation of DA/ID/BM against shared SOC caused impossible SOC values. Fixed in v11 by sequential SOC handoff in dispatcher.py.
+- **SOC over-commitment bug:** Independent optimisation of DA/ID/BM against shared SOC caused impossible SOC values. Fixed in v11 by sequential SOC handoff.
+- **Fetch scripts date-locked:** `fetch_da_prices.py` and `fetch_bmrs.py` originally hardcoded "yesterday". Fixed in v13 to accept optional date argument, enabling historical replay to fetch any date.
 
 ---
 
