@@ -1,6 +1,6 @@
 # VPP Optimiser — Project Briefing
-**Version:** 11.0
-**Status:** In Progress — DA/ID/BM layers integrated with sequential SOC handoff, dashboard next
+**Version:** 12.0
+**Status:** In Progress — Full DA+ID+BM dashboard complete, Phase 1 historical replay next
 
 ---
 
@@ -97,7 +97,8 @@ All pipelines operational, data saved to `/data`, pushed to GitHub.
 | `compare_optimisers.py` | Benchmark harness | ✅ Built |
 | `pnl.py` | P&L calculator | ✅ Built |
 | `risk.py` | Risk layer | ✅ Built |
-| `dashboard.py` | Operations dashboard | ✅ Built (LP-integrated, ID/BM not yet wired in) |
+| `dashboard.py` | Operations dashboard | ✅ Built — full DA+ID+BM integration |
+| `replay.py` | Phase 1 historical replay | ⬜ Next |
 
 **Optimisation roadmap:**
 1. ✅ Rules-based
@@ -130,9 +131,9 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 3. Charge/discharge power: 0 ≤ c(t), d(t) ≤ P_max × layer_capacity_fraction
 4. Initial SOC: handed off sequentially — DA starts at 50%, ID starts where DA ended, BM starts where ID ended
 
-**Critical fix (v11):** Each layer previously assumed an independent 50% starting SOC and its own private capacity slice. When combined, this caused SOC to go negative and above 100% — a physically impossible result. Fixed by chaining the three optimisers sequentially, each handing its final SOC to the next layer as its starting point. This mirrors real market timing (DA commits first, ID adjusts, BM responds last).
+**Critical fix (v11):** Each layer previously assumed an independent 50% starting SOC. Fixed by sequential SOC handoff — DA starts at 50%, ID starts where DA ended, BM starts where ID ended. Mirrors real market timing.
 
-**Validation (2026-06-15):** Portfolio revenue £129,120, cost £82,852, net P&L £46,268. All assets stayed within 10-90% SOC bounds across the full combined dispatch — no breaches.
+**Validation (2026-06-15):** Portfolio revenue £129,120, cost £82,852, net P&L £46,268. All assets within 10-90% SOC bounds.
 
 ---
 
@@ -142,18 +143,22 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 |---|---|
 | Morning briefing (market signal) | ✅ Built |
 | Strategy recommendations | ✅ Built |
-| Portfolio P&L | ✅ Built (LP only — ID/BM not yet wired in) |
+| Portfolio P&L — DA+ID+BM combined | ✅ Built |
+| P&L by asset | ✅ Built |
+| P&L by market (DA / ID / BM breakdown) | ✅ Built |
+| Net P&L contribution by market bar chart | ✅ Built |
 | Price curve | ✅ Built |
 | Asset status | ✅ Built |
-| Risk summary | ✅ Built |
+| Risk summary (Sharpe, VaR, volatility, concentration) | ✅ Built |
 | DC tender forecast | ✅ Built |
-| Dispatch schedule | ✅ Built (LP only) |
-| SOC curve chart | ✅ Built |
-| Dispatch vs price overlay chart | ✅ Built |
-| LP vs DA comparison chart | ✅ Built |
-| Combined DA+ID+BM dashboard view | ⬜ Next |
+| Dispatch schedule — nested tabs (asset → DA/ID/BM) | ✅ Built |
+| SOC curve per layer | ✅ Built |
+| Price curve per layer (separate axis) | ✅ Built |
+| Charge/discharge MW bar chart per layer (separate axis) | ✅ Built |
 | Monthly P&L view | ⬜ To do |
 | Telegram alerts | ⬜ To do |
+
+**Chart fix (v12):** Dispatch vs price previously used a single axis — MW lines (3-15 MW) were invisible against £100+ price scale. Fixed by splitting into two separate charts: price line chart on its own axis, charge/discharge MW as a bar chart on its own axis.
 
 ---
 
@@ -169,7 +174,7 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 
 ## 11. Development Phases
 
-- **Phase 1** — Historical replay on real published data
+- **Phase 1** — Historical replay on real published data ⬜ Next
 - **Phase 2** — Shadow trading (real-time decisions, no real trades)
 - **Phase 3** — Live single asset operation
 - **Phase 4** — Scale to full portfolio
@@ -193,12 +198,12 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 | Sequential SOC handoff (dispatcher.py) | ✅ Done |
 | P&L calculator | ✅ Done |
 | Risk layer | ✅ Done |
-| Operations dashboard (LP-integrated) | ✅ Done |
-| Dashboard ID/BM integration | ⬜ Next |
+| Operations dashboard — full DA+ID+BM | ✅ Done |
+| update_briefing.py — fixed overwrite bug | ✅ Done |
+| Phase 1 historical replay (replay.py) | ⬜ Next |
 | Stochastic optimisation | ⬜ To do |
 | AI agent layer | ⬜ To do |
 | Settlement reconciliation | ⬜ To do |
-| Phase 1 historical replay | ⬜ To do |
 | Phase 2 shadow trading | ⬜ To do |
 
 ---
@@ -212,6 +217,7 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 - Validate each layer against baselines before moving on
 - Pause for academic reading before major new optimisation techniques
 - Shared physical constraints (like SOC) must be modelled jointly or sequentially — never assume independent layers can be safely summed post-hoc
+- Keep BRIEFING.md accurate after every session — it is the single source of truth
 
 ---
 
@@ -235,13 +241,15 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 - Intraday continuous price approximation methodology — currently simulated, real data still unavailable free
 - BM bid/offer strategy under imbalance exposure
 - Export/import limits per asset connection point
-- Whether DA/ID/BM should eventually be jointly optimised in one LP rather than sequentially — sequential is simpler and matches real market timing, but may leave value on the table compared to a fully joint solve
+- Whether DA/ID/BM should eventually be jointly optimised in one LP rather than sequentially
 
 ---
 
 ## 16. Known Issues / Lessons Learned
 
-- **v6 → v11 documentation gap:** `update_briefing.py` previously hardcoded stale v6.0 content and silently overwrote BRIEFING.md on every run, while still committing successfully. Git history showed clean v7-v11 commits, but the actual file content never advanced past v6 until this manual restoration. Script has been fixed (v11) to never write BRIEFING.md content — it now only logs sessions and pushes whatever is on disk. BRIEFING.md must be edited directly going forward.
+- **v6 → v11 documentation gap:** `update_briefing.py` previously hardcoded stale v6.0 content and silently overwrote BRIEFING.md on every run. Fixed in v11 — script now only logs sessions and pushes whatever is on disk. BRIEFING.md must be edited directly going forward.
+- **Dispatch chart scale mismatch:** MW and price on same axis made MW lines invisible. Fixed in v12 by splitting into separate charts.
+- **SOC over-commitment bug:** Independent optimisation of DA/ID/BM against shared SOC caused impossible SOC values. Fixed in v11 by sequential SOC handoff in dispatcher.py.
 
 ---
 
