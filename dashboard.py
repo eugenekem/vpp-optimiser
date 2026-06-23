@@ -68,14 +68,7 @@ has_lp_only     = df_lp is not None and not has_all_markets
 
 # --- Compute P&L from schedules ---
 def compute_combined_pnl(df_lp, df_id, df_bm):
-    """
-    Compute gross revenue and cost across DA, ID, and BM schedules.
-    DA/ID: price * power * 0.5h
-    BM: SSP for discharge, SBP for charge
-    Returns a DataFrame with per-asset, per-period revenue, cost, net_pnl.
-    """
     rows = []
-
     for df, layer, price_col_d, price_col_c in [
         (df_lp, "DA", "price", "price"),
         (df_id, "ID", "id_price", "id_price"),
@@ -90,7 +83,6 @@ def compute_combined_pnl(df_lp, df_id, df_bm):
                 cost = row["power_mw"] * row[price_col_c] * 0.5
             else:
                 rev = cost = 0.0
-
             rows.append({
                 "asset": row["asset"],
                 "settlement_period": row["settlement_period"],
@@ -99,7 +91,6 @@ def compute_combined_pnl(df_lp, df_id, df_bm):
                 "cost": round(cost, 2),
                 "net_pnl": round(rev - cost, 2),
             })
-
     return pd.DataFrame(rows)
 
 def compute_lp_pnl(df_lp):
@@ -137,9 +128,9 @@ st.divider()
 st.markdown("### Morning briefing")
 
 if df_prices is not None:
-    price_range = df_prices["price"].max() - df_prices["price"].min()
-    min_price   = df_prices["price"].min()
-    max_price   = df_prices["price"].max()
+    price_range  = df_prices["price"].max() - df_prices["price"].min()
+    min_price    = df_prices["price"].min()
+    max_price    = df_prices["price"].max()
     has_negative = min_price < 0
 
     if has_negative and price_range > 40:
@@ -182,27 +173,27 @@ if df_prices is not None:
 
     if day_type == "green":
         recommendations = {
-            "Battery_1": ("✅ Full DA commit",       "Strong spread — commit fully in DA. Reserve 50% for BM spikes."),
-            "Battery_2": ("✅ Full DA commit",       "Charge during negative prices. Discharge top 10 periods aggressively."),
-            "Battery_3": ("✅ Full DA commit",       "Maximum arbitrage day. Charge all negative price periods. Discharge evening peak."),
-            "Battery_4": ("✅ Full DA commit",       "Solar will assist charging. Stack DC alongside DA for extra revenue."),
-            "Battery_5": ("✅ Full DA commit",       "Solar advantage today. Discharge evening peak, let solar top up during day."),
+            "Battery_1": ("✅ Full DA commit",      "Strong spread — commit fully in DA. Reserve 50% for BM spikes."),
+            "Battery_2": ("✅ Full DA commit",      "Charge during negative prices. Discharge top 10 periods aggressively."),
+            "Battery_3": ("✅ Full DA commit",      "Maximum arbitrage day. Charge all negative price periods. Discharge evening peak."),
+            "Battery_4": ("✅ Full DA commit",      "Solar will assist charging. Stack DC alongside DA for extra revenue."),
+            "Battery_5": ("✅ Full DA commit",      "Solar advantage today. Discharge evening peak, let solar top up during day."),
         }
     elif day_type == "amber":
         recommendations = {
-            "Battery_1": ("⚠️ Prioritise DC over DA",  "Narrow spread limits DA value. Stack DC High and DC Low for reliable ancillary revenue."),
-            "Battery_2": ("⚠️ Reduce DA commitment",   "Limit discharge to top 8 periods only. Hold remaining capacity for intraday opportunities."),
-            "Battery_3": ("⚠️ Reduce DA commitment",   "Reduce discharge threshold. Narrow spread means lower margin — be selective on periods."),
-            "Battery_4": ("⚠️ Treat as standalone",    "Co-located advantage limited without negative prices. Focus on top discharge periods only."),
-            "Battery_5": ("⚠️ Treat as standalone",    "Same as Battery 4 — solar charging benefit reduced. Prioritise DC stacking."),
+            "Battery_1": ("⚠️ Prioritise DC over DA", "Narrow spread limits DA value. Stack DC High and DC Low for reliable ancillary revenue."),
+            "Battery_2": ("⚠️ Reduce DA commitment",  "Limit discharge to top 8 periods only. Hold remaining capacity for intraday opportunities."),
+            "Battery_3": ("⚠️ Reduce DA commitment",  "Reduce discharge threshold. Narrow spread means lower margin — be selective on periods."),
+            "Battery_4": ("⚠️ Treat as standalone",   "Co-located advantage limited without negative prices. Focus on top discharge periods only."),
+            "Battery_5": ("⚠️ Treat as standalone",   "Same as Battery 4 — solar charging benefit reduced. Prioritise DC stacking."),
         }
     else:
         recommendations = {
-            "Battery_1": ("🔴 Hold for BM only",   "Poor spread — do not commit in DA. Reserve entirely for BM short-duration spikes."),
-            "Battery_2": ("🔴 Minimal DA, stack DC","Charge only if price below £30. Discharge only top 5 periods. Stack DC for base revenue."),
-            "Battery_3": ("🔴 Reduce exposure",     "Commit only 50% capacity in DA. Wide reservation for intraday. Avoid locking in poor margin."),
-            "Battery_4": ("🔴 DC priority",         "Skip DA energy arbitrage. Full capacity available for DC High and DC Low today."),
-            "Battery_5": ("🔴 DC priority",         "Same as Battery 4. Poor energy spread means DC stacking is the better revenue source today."),
+            "Battery_1": ("🔴 Hold for BM only",    "Poor spread — do not commit in DA. Reserve entirely for BM short-duration spikes."),
+            "Battery_2": ("🔴 Minimal DA, stack DC", "Charge only if price below £30. Discharge only top 5 periods. Stack DC for base revenue."),
+            "Battery_3": ("🔴 Reduce exposure",      "Commit only 50% capacity in DA. Wide reservation for intraday. Avoid locking in poor margin."),
+            "Battery_4": ("🔴 DC priority",          "Skip DA energy arbitrage. Full capacity available for DC High and DC Low today."),
+            "Battery_5": ("🔴 DC priority",          "Same as Battery 4. Poor energy spread means DC stacking is the better revenue source today."),
         }
 
     if max_concentration_pct > 40 and max_concentrated_asset:
@@ -234,18 +225,16 @@ if active_pnl is not None:
     with col2: st.metric("Total cost",    f"£{total_cost:,.0f}")
     with col3: st.metric("Net P&L",       f"£{total_net:,.0f}", delta=f"£{total_net:,.0f}", delta_color="normal")
 
-    # P&L by asset
     st.markdown("**P&L by asset**")
     asset_data = []
     for asset_name in sorted(active_pnl["asset"].unique()):
-        df_a   = active_pnl[active_pnl["asset"] == asset_name]
-        rev    = df_a["revenue"].sum()
-        cost   = df_a["cost"].sum()
-        net    = rev - cost
+        df_a  = active_pnl[active_pnl["asset"] == asset_name]
+        rev   = df_a["revenue"].sum()
+        cost  = df_a["cost"].sum()
+        net   = rev - cost
         asset_data.append({"Asset": asset_name, "Revenue (£)": f"£{rev:,.0f}", "Cost (£)": f"£{cost:,.0f}", "Net P&L (£)": f"£{net:,.0f}"})
     st.dataframe(pd.DataFrame(asset_data), use_container_width=True, hide_index=True)
 
-    # P&L by market (if all markets available)
     if has_all_markets:
         st.markdown("**P&L by market**")
         market_data = []
@@ -257,7 +246,6 @@ if active_pnl is not None:
             market_data.append({"Market": layer, "Revenue (£)": f"£{rev:,.0f}", "Cost (£)": f"£{cost:,.0f}", "Net P&L (£)": f"£{net:,.0f}"})
         st.dataframe(pd.DataFrame(market_data), use_container_width=True, hide_index=True)
 
-        # Market contribution bar chart
         st.markdown("**Net P&L contribution by market**")
         market_net = df_combined_pnl.groupby("layer")["net_pnl"].sum()
         st.bar_chart(market_net, use_container_width=True)
@@ -290,15 +278,15 @@ st.markdown("### Risk summary")
 risk_pnl = active_pnl
 if risk_pnl is not None:
     period_pnl = risk_pnl.groupby("settlement_period")["net_pnl"].sum().values
-    var_95      = calculate_var(period_pnl, 0.95)
-    volatility  = calculate_volatility(period_pnl)
-    sharpe      = calculate_sharpe(period_pnl)
+    var_95     = calculate_var(period_pnl, 0.95)
+    volatility = calculate_volatility(period_pnl)
+    sharpe     = calculate_sharpe(period_pnl)
     _, concentration = concentration_risk(risk_pnl)
 
     col1, col2, col3 = st.columns(3)
-    with col1: st.metric("Sharpe ratio",    f"{sharpe:.2f}", delta="good" if sharpe > 1 else "low" if sharpe < 0.5 else "ok")
-    with col2: st.metric("VaR 95%",         f"£{var_95:,.0f}")
-    with col3: st.metric("P&L volatility",  f"£{volatility:,.0f}/period")
+    with col1: st.metric("Sharpe ratio",   f"{sharpe:.2f}", delta="good" if sharpe > 1 else "low" if sharpe < 0.5 else "ok")
+    with col2: st.metric("VaR 95%",        f"£{var_95:,.0f}")
+    with col3: st.metric("P&L volatility", f"£{volatility:,.0f}/period")
 
     st.markdown("**Concentration risk**")
     conc_df = pd.DataFrame({"Asset": list(concentration.keys()), "P&L contribution (%)": list(concentration.values())})
@@ -323,12 +311,12 @@ st.divider()
 st.markdown("### Dispatch schedule")
 
 def highlight_action(row):
-    if row["Action"] == "charge":    return ["background-color: #d4edda"] * len(row)
+    if row["Action"] == "charge":      return ["background-color: #d4edda"] * len(row)
     elif row["Action"] == "discharge": return ["background-color: #f8d7da"] * len(row)
-    else:                            return [""] * len(row)
+    else:                              return [""] * len(row)
 
 def render_schedule_tab(df_raw, price_col, label):
-    """Render table + SOC curve + dispatch vs price for one layer."""
+    """Render table + SOC curve + price chart + MW bar chart for one layer."""
     df = df_raw.copy()
     df = df[["settlement_period", price_col, "action", "power_mw", "soc"]].copy()
     df.columns = ["Period", "Price (£/MWh)", "Action", "Power (MW)", "SOC (%)"]
@@ -349,15 +337,21 @@ def render_schedule_tab(df_raw, price_col, label):
     st.markdown(f"**SOC curve ({label})**")
     st.line_chart(df[["Period", "SOC (%)"]].set_index("Period"), use_container_width=True)
 
-    # Dispatch vs price
-    st.markdown(f"**Dispatch vs price ({label})**")
-    chart_data = pd.DataFrame({
-        "Price (£/MWh)": df_raw.set_index("settlement_period")[price_col],
-        "Charge (MW)":   df_raw[df_raw["action"] == "charge"].set_index("settlement_period")["power_mw"],
-        "Discharge (MW)":df_raw[df_raw["action"] == "discharge"].set_index("settlement_period")["power_mw"],
+    # Price curve — separate chart so MW scale stays readable
+    st.markdown(f"**Price curve ({label})**")
+    price_data = df_raw.set_index("settlement_period")[[price_col]].rename(
+        columns={price_col: "Price (£/MWh)"}
+    )
+    st.line_chart(price_data, use_container_width=True)
+
+    # Charge / discharge MW — bar chart on its own axis
+    st.markdown(f"**Charge / discharge MW ({label})**")
+    mw_data = pd.DataFrame({
+        "Charge (MW)":    df_raw[df_raw["action"] == "charge"].set_index("settlement_period")["power_mw"],
+        "Discharge (MW)": df_raw[df_raw["action"] == "discharge"].set_index("settlement_period")["power_mw"],
     }).fillna(0)
-    st.line_chart(chart_data, use_container_width=True)
-    st.caption("Charges should cluster at price troughs, discharges at peaks.")
+    st.bar_chart(mw_data, use_container_width=True)
+    st.caption("Charge bars should cluster at price troughs, discharge bars at price peaks.")
 
 
 if has_all_markets:
