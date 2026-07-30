@@ -1,6 +1,6 @@
 # VPP Optimiser — Project Briefing
-**Version:** 13.0
-**Status:** Phase 1 historical replay complete — 30 days validated, Phase 2 shadow trading next
+**Version:** 14.0
+**Status:** Phase 1 historical replay complete — 30 days validated. Phase 2 shadow trading (shadow.py) built — logs daily P&L going forward, no real trades. Not yet a live-trading system: it decides using published (already-known) prices one day behind, not forecasts — see section 16.
 
 ---
 
@@ -66,6 +66,8 @@ All pipelines operational, data saved to `/data`, pushed to GitHub.
 
 **Known gap:** Real-time intraday continuous prices not freely available. Workaround: simulate ID price as DA price + Normal(0, £5) spread.
 
+**Note:** `fetch_dc_tenders.py`, `fetch_weather.py`, and `fetch_solar.py` are still hardcoded to "yesterday" (no date arg support), and `fetch_weather.py` uses Open-Meteo's backward-looking archive endpoint. Confirmed non-blocking for the DA/ID/BM dispatch pipeline (`dispatcher.py` only consumes `market_index`/`system_prices` data) — relevant only if these feeds are later wired into dashboard display or the optimiser itself.
+
 **Design principle:** No paid data subscriptions in the short to medium term.
 
 ---
@@ -99,7 +101,7 @@ All pipelines operational, data saved to `/data`, pushed to GitHub.
 | `risk.py` | Risk layer | ✅ Built |
 | `dashboard.py` | Operations dashboard — full DA+ID+BM | ✅ Built |
 | `replay.py` | Phase 1 historical replay | ✅ Built |
-| `shadow.py` | Phase 2 shadow trading | ⬜ Next |
+| `shadow.py` | Phase 2 shadow trading | ✅ Built |
 
 **Optimisation roadmap:**
 1. ✅ Rules-based
@@ -197,7 +199,7 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 ## 12. Development Phases
 
 - **Phase 1** — Historical replay on real published data ✅ Complete
-- **Phase 2** — Shadow trading (real-time decisions, no real trades) ⬜ Next
+- **Phase 2** — Shadow trading (daily batch, logs decisions on published data, no real trades) ✅ Built — accumulating days
 - **Phase 3** — Live single asset operation
 - **Phase 4** — Scale to full portfolio
 - **Phase 5** — Residential solar aggregation (future scope, parked)
@@ -223,7 +225,7 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 | Operations dashboard — full DA+ID+BM | ✅ Done |
 | update_briefing.py — fixed overwrite bug | ✅ Done |
 | Phase 1 historical replay (replay.py) | ✅ Done |
-| Phase 2 shadow trading (shadow.py) | ⬜ Next |
+| Phase 2 shadow trading (shadow.py) | ✅ Done |
 | Stochastic optimisation | ⬜ To do |
 | AI agent layer | ⬜ To do |
 | Settlement reconciliation | ⬜ To do |
@@ -259,6 +261,7 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 
 ## 16. Open Research Questions
 
+- **Price forecasting is the actual blocker for real trading.** Phase 1 (replay.py) and Phase 2 (shadow.py) both decide using published/already-known prices, one day behind — this proves the battery dispatch and market logic work, but it is not the same problem as real trading, where a DA bid must be placed before next-day prices exist. Real trading requires predicting next-day prices and deciding under that uncertainty. Not yet started — this should be scoped before Phase 3 (live operation).
 - Stochastic optimisation — price uncertainty modelling approaches
 - Battery degradation cost integration into LP objective
 - Intraday continuous price approximation — currently simulated, real data unavailable free
@@ -274,6 +277,7 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 - **Dispatch chart scale mismatch:** MW and price on same axis made MW lines invisible. Fixed in v12 by splitting into separate charts.
 - **SOC over-commitment bug:** Independent optimisation of DA/ID/BM against shared SOC caused impossible SOC values. Fixed in v11 by sequential SOC handoff.
 - **Fetch scripts date-locked:** `fetch_da_prices.py` and `fetch_bmrs.py` originally hardcoded "yesterday". Fixed in v13 to accept optional date argument, enabling historical replay to fetch any date.
+- **v14 — shadow.py added.** Reuses `fetch_if_missing`/`classify_day` (from `replay.py`) and `run_dispatcher` (from `dispatcher.py`) unmodified — no changes to existing pipeline files. Appends one row per day to `data/shadow_pnl.csv` (idempotent — checks the `date` column before processing, safe to re-run). Supports `python shadow.py [YYYY-MM-DD]` for manual backfill of a missed day. Confirmed the pipeline does not consume solar/weather/DC-tender data, so those 3 date-locked fetch scripts (see section 5) are not a blocker for this.
 
 ---
 
