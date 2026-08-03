@@ -1,6 +1,6 @@
 # VPP Optimiser — Project Briefing
-**Version:** 14.0
-**Status:** Phase 1 historical replay complete — 30 days validated. Phase 2 shadow trading (shadow.py) built — logs daily P&L going forward, no real trades. Not yet a live-trading system: it decides using published (already-known) prices one day behind, not forecasts — see section 16.
+**Version:** 15.0
+**Status:** Phase 1 historical replay complete — 30 days validated. Phase 2 shadow trading (shadow.py) built. DA price forecasting started (forecast.py) — first baselines built and measured, NOT yet wired into dispatch. Still not a live-trading system: all trading logic decides on published (already-known) prices — see sections 16 and 18.
 
 ---
 
@@ -102,6 +102,7 @@ All pipelines operational, data saved to `/data`, pushed to GitHub.
 | `dashboard.py` | Operations dashboard — full DA+ID+BM | ✅ Built |
 | `replay.py` | Phase 1 historical replay | ✅ Built |
 | `shadow.py` | Phase 2 shadow trading | ✅ Built |
+| `forecast.py` | DA price forecast + accuracy scoring | ✅ Built (baselines only, not wired to dispatch) |
 
 **Optimisation roadmap:**
 1. ✅ Rules-based
@@ -186,6 +187,35 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 
 ---
 
+## 10b. DA Price Forecast — Baseline Results
+
+**Script:** `models/forecast.py`
+**Outputs:** `data/forecast_{date}.csv` (predictions), `data/forecast_accuracy.csv` (scores)
+
+Three deliberately simple methods, walk-forward validated (each day predicted using only prior days — leakage-guarded and verified):
+
+| Method | Description |
+|---|---|
+| `naive` | Copy the most recent available day — the benchmark to beat |
+| `mean_7` | Per-settlement-period mean of last 7 available days |
+| `weekday` | As above, but weekday days predict weekdays, weekend days predict weekends |
+
+**Results on the clean 30-day block (31 May – 22 Jun, full 7-day history available):**
+
+| Method | Days | MAE | RMSE | Cheap-4 hits | Peak-4 hits | Skill vs naive |
+|---|---|---|---|---|---|---|
+| naive | 23 | £27.91 | £34.30 | 0.9 / 4 | 1.9 / 4 | — |
+| mean_7 | 23 | £25.44 | £30.04 | 1.4 / 4 | 2.3 / 4 | +8.9% |
+| **weekday** | 23 | **£23.51** | **£27.58** | **1.5 / 4** | **2.4 / 4** | **+15.8%** |
+
+(Across all 38 available days including sparse April and the stale 29 Jul day, skill drops to +7.7% for `weekday` — the sparse history hurts, as expected.)
+
+**Key finding — read honestly:** `weekday` beats naive by ~16% on MAE, so the weekday/weekend split is real signal, not noise. **But absolute accuracy is poor for trading purposes:** MAE of £23.51/MWh against a typical daily spread of ~£60–100/MWh is a large error. Most telling is the Cheap-4 hit rate of 1.5/4 — the forecast identifies only ~37% of the genuinely cheapest periods, and peak identification (2.4/4) is better but still unreliable. For a battery, *picking the right periods* is what earns money, so these baselines are **not yet good enough to drive real dispatch decisions**.
+
+**Conclusion:** treat these as the floor to beat, not a usable trading signal. Wiring `forecast.py` into `dispatcher.py` would be premature.
+
+---
+
 ## 11. Operating Model
 
 - One day behind real time using published data
@@ -226,6 +256,9 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 | update_briefing.py — fixed overwrite bug | ✅ Done |
 | Phase 1 historical replay (replay.py) | ✅ Done |
 | Phase 2 shadow trading (shadow.py) | ✅ Done |
+| DA price forecast baselines + accuracy scoring (forecast.py) | ✅ Done |
+| Improve forecast accuracy to a tradeable level | ⬜ Next |
+| Wire forecast into dispatch (blocked on accuracy) | ⬜ To do |
 | Stochastic optimisation | ⬜ To do |
 | AI agent layer | ⬜ To do |
 | Settlement reconciliation | ⬜ To do |
@@ -261,7 +294,11 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 
 ## 16. Open Research Questions
 
-- **Price forecasting is the actual blocker for real trading.** Phase 1 (replay.py) and Phase 2 (shadow.py) both decide using published/already-known prices, one day behind — this proves the battery dispatch and market logic work, but it is not the same problem as real trading, where a DA bid must be placed before next-day prices exist. Real trading requires predicting next-day prices and deciding under that uncertainty. Not yet started — this should be scoped before Phase 3 (live operation).
+- **Price forecasting remains the blocker for real trading — now started, not solved.** Phase 1 (replay.py) and Phase 2 (shadow.py) both decide using published/already-known prices. `forecast.py` (v15) established measured baselines, but accuracy is not yet tradeable (see section 10b). Open questions from here:
+  - **More history is the likely bottleneck.** Only ~30 clean consecutive days exist. Backfilling `market_index_*.csv` across many months would enable both better methods and honest validation. Cheapest, highest-value next step.
+  - **Predictive features not yet usable.** Wind/solar generation forecasts and demand forecasts drive GB price shape far more than price history alone. Requires a forward-looking weather feed — `fetch_weather.py` currently uses Open-Meteo's *archive* endpoint (past weather); a forecast endpoint would be needed.
+  - Whether to forecast the *price level* at all, versus directly forecasting the *ranking* of periods (cheapest→priciest), since dispatch only needs the ordering. Possibly an easier and more directly useful target.
+  - How to represent forecast uncertainty so the optimiser can hedge rather than trust a single predicted path (links to stochastic optimisation below).
 - Stochastic optimisation — price uncertainty modelling approaches
 - Battery degradation cost integration into LP objective
 - Intraday continuous price approximation — currently simulated, real data unavailable free
@@ -277,6 +314,8 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 - **Dispatch chart scale mismatch:** MW and price on same axis made MW lines invisible. Fixed in v12 by splitting into separate charts.
 - **SOC over-commitment bug:** Independent optimisation of DA/ID/BM against shared SOC caused impossible SOC values. Fixed in v11 by sequential SOC handoff.
 - **Fetch scripts date-locked:** `fetch_da_prices.py` and `fetch_bmrs.py` originally hardcoded "yesterday". Fixed in v13 to accept optional date argument, enabling historical replay to fetch any date.
+- **⚠️ Settlement-date misalignment in `market_index_*.csv` (found v15, NOT yet fixed).** Each file mixes two settlement dates. `fetch_da_prices.py` filters on `startTime` within a UTC calendar day, but during BST a GB settlement day starts at 23:00 UTC the evening before — so SP1–2 in `market_index_{D}.csv` actually belong to settlement date D+1, while SP3–48 belong to D. Verified in `market_index_2026-06-22.csv` (SP1 carries `settlementDate` 2026-06-23). Consistent across all files, so replay/shadow results are internally consistent and comparisons remain valid — but the mapping is off by two periods against true settlement days. **Must be resolved before live trading**, and it also mildly contaminates forecast training data. Affects `system_prices_*.csv` alignment too — needs checking.
+- **v15 — forecast.py added.** DA price forecasting baselines (`naive`, `mean_7`, `weekday`) plus walk-forward accuracy scoring. Writes only to `data/forecast_{date}.csv` — deliberately NEVER `market_index_{date}.csv`, since that filename is what `fetch_if_missing()` checks; writing there would make replay/shadow silently consume predictions as if they were real published prices. Leakage guard verified: forecasts for a date are identical whether or not that date's actuals are present. No existing files modified. Result recorded honestly in section 10b — beats naive, still not tradeable.
 - **v14 — shadow.py added.** Reuses `fetch_if_missing`/`classify_day` (from `replay.py`) and `run_dispatcher` (from `dispatcher.py`) unmodified — no changes to existing pipeline files. Appends one row per day to `data/shadow_pnl.csv` (idempotent — checks the `date` column before processing, safe to re-run). Supports `python shadow.py [YYYY-MM-DD]` for manual backfill of a missed day. Confirmed the pipeline does not consume solar/weather/DC-tender data, so those 3 date-locked fetch scripts (see section 5) are not a blocker for this.
 
 ---
