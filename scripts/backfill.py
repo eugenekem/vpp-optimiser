@@ -24,8 +24,9 @@ DELAY = 0.4          # seconds between requests — be polite to Elexon
 PROGRESS_EVERY = 25  # print a progress line this often
 
 FEEDS = [
-    ("fetch_da_prices.py", "market_index"),
-    ("fetch_bmrs.py",      "system_prices"),
+    ("fetch_da_prices.py",  "market_index"),
+    ("fetch_bmrs.py",       "system_prices"),
+    ("fetch_wind_solar.py", "wind_solar"),
 ]
 
 

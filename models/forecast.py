@@ -28,8 +28,10 @@ from datetime import datetime, timedelta
 
 DATA_DIR = "../data"
 ACCURACY_LOG = f"{DATA_DIR}/forecast_accuracy.csv"
-METHODS = ["naive", "mean_7", "weekday"]
+METHODS = ["naive", "mean_7", "weekday", "regression"]
 WINDOW = 7
+REG_WINDOW = 90   # days of history for the regression fit (needs more than a mean does)
+REG_MIN_DAYS = 30  # below this, don't attempt a fit
 N_EXTREME = 4  # how many cheapest/priciest periods we care about hitting
 
 
@@ -68,6 +70,32 @@ def load_actual(date):
     return df.set_index("settlementPeriod")["price"].sort_index()
 
 
+def load_features(date):
+    """
+    Day-ahead wind and solar forecast for a date, indexed by settlementPeriod.
+
+    NOT leakage: Elexon publishes this ~16:45 the evening BEFORE delivery, so
+    it is genuinely known before day-ahead gate closure. It is a forecast of
+    generation, not the outturn.
+
+    Returns a DataFrame with wind_gw / solar_gw, or None if unavailable.
+    """
+    path = f"{DATA_DIR}/wind_solar_{date}.csv"
+    if not os.path.exists(path):
+        return None
+    df = pd.read_csv(path)
+
+    if df["settlementPeriod"].duplicated().any():
+        df = df.drop_duplicates(subset="settlementPeriod", keep="first")
+
+    df = df.set_index("settlementPeriod").sort_index()
+    # Work in GW so the regression coefficients stay numerically sane.
+    return pd.DataFrame({
+        "wind_gw": df["wind_total_mw"] / 1000.0,
+        "solar_gw": df["solar_mw"] / 1000.0,
+    })
+
+
 def is_weekend(date):
     return datetime.strptime(date, "%Y-%m-%d").weekday() >= 5
 
@@ -98,6 +126,9 @@ def forecast_prices(target_date, method="mean_7", history=None):
         - datetime.strptime(latest, "%Y-%m-%d")
     ).days
 
+    if method == "regression":
+        return _forecast_regression(target_date, prior, info)
+
     if method == "naive":
         train_dates = prior[-1:]
     elif method == "mean_7":
@@ -120,6 +151,79 @@ def forecast_prices(target_date, method="mean_7", history=None):
 
     # Average each settlement period across the training days.
     forecast = pd.concat(series, axis=1).mean(axis=1).sort_index()
+    forecast.name = "price"
+    return forecast, info
+
+
+def _forecast_regression(target_date, prior, info):
+    """
+    Fit price against the day-ahead wind and solar forecast, one small
+    least-squares fit per settlement period.
+
+    Per-period rather than one global fit because wind moves a 03:00 price very
+    differently from an 18:00 price — the whole point is capturing shape.
+
+    Falls back to the mean of the training window for any period that cannot be
+    fitted, so a thin period never produces a wild extrapolation.
+    """
+    target_feat = load_features(target_date)
+    if target_feat is None:
+        return None, info  # no forecast inputs for the target day — cannot run
+
+    train_dates = [d for d in prior[-REG_WINDOW:]
+                   if os.path.exists(f"{DATA_DIR}/wind_solar_{d}.csv")]
+    if len(train_dates) < REG_MIN_DAYS:
+        return None, info
+
+    # Gather training rows once, keyed by settlement period.
+    prices, feats = {}, {}
+    for d in train_dates:
+        a = load_actual(d)
+        f = load_features(d)
+        if a is None or f is None:
+            continue
+        common = a.index.intersection(f.index)
+        for p in common:
+            prices.setdefault(p, []).append(a.loc[p])
+            feats.setdefault(p, []).append([1.0, f.loc[p, "wind_gw"], f.loc[p, "solar_gw"]])
+
+    if not prices:
+        return None, info
+
+    info["n_train_days"] = len(train_dates)
+
+    predictions = {}
+    for p in target_feat.index:
+        y = np.asarray(prices.get(p, []), dtype=float)
+        X = np.asarray(feats.get(p, []), dtype=float)
+
+        # Need meaningfully more observations than parameters to fit safely.
+        if len(y) < 10:
+            if len(y):
+                predictions[p] = float(y.mean())
+            continue
+
+        try:
+            coef, *_ = np.linalg.lstsq(X, y, rcond=None)
+        except np.linalg.LinAlgError:
+            predictions[p] = float(y.mean())
+            continue
+
+        x_new = np.array([1.0,
+                          target_feat.loc[p, "wind_gw"],
+                          target_feat.loc[p, "solar_gw"]])
+        pred = float(x_new @ coef)
+
+        # Guard against extrapolation blow-ups: keep the prediction inside the
+        # range actually observed in training, widened by a small margin.
+        lo, hi = y.min(), y.max()
+        span = hi - lo
+        predictions[p] = min(max(pred, lo - 0.5 * span), hi + 0.5 * span)
+
+    if not predictions:
+        return None, info
+
+    forecast = pd.Series(predictions).sort_index()
     forecast.name = "price"
     return forecast, info
 
@@ -212,6 +316,26 @@ def backtest():
 
     df = pd.DataFrame(rows)
     df.to_csv(ACCURACY_LOG, index=False)
+
+    # Compare like with like. `regression` only runs on days that have a
+    # wind/solar forecast, so averaging each method over whatever days it
+    # happened to cover would compare different (possibly easier) samples.
+    # Restrict the summary to days where EVERY method produced a forecast.
+    scored = df.groupby("date")["method"].nunique()
+    common_dates = set(scored[scored == len(METHODS)].index)
+    n_all, n_common = df["date"].nunique(), len(common_dates)
+
+    if n_common == 0:
+        print("⚠️  No day was scored by every method — cannot compare fairly.")
+        print(f"   Coverage by method:\n{df.groupby('method')['date'].nunique()}")
+        return None
+
+    if n_common < n_all:
+        print(f"\nComparing on the {n_common} days scored by all "
+              f"{len(METHODS)} methods (of {n_all} days total),")
+        print("so every method is judged on identical days.")
+
+    df = df[df["date"].isin(common_dates)]
 
     summary = df.groupby("method").agg(
         days=("date", "count"),
