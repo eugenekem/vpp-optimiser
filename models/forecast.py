@@ -28,7 +28,7 @@ from datetime import datetime, timedelta
 
 DATA_DIR = "../data"
 ACCURACY_LOG = f"{DATA_DIR}/forecast_accuracy.csv"
-METHODS = ["naive", "mean_7", "weekday", "regression"]
+METHODS = ["naive", "mean_7", "mean_90", "weekday", "regression"]
 WINDOW = 7
 REG_WINDOW = 90   # days of history for the regression fit (needs more than a mean does)
 REG_MIN_DAYS = 30  # below this, don't attempt a fit
@@ -133,6 +133,10 @@ def forecast_prices(target_date, method="mean_7", history=None):
         train_dates = prior[-1:]
     elif method == "mean_7":
         train_dates = prior[-WINDOW:]
+    elif method == "mean_90":
+        # Control for the regression's longer training window: if this matches
+        # the regression, the gain came from more history, not from wind/solar.
+        train_dates = prior[-REG_WINDOW:]
     elif method == "weekday":
         want_weekend = is_weekend(target_date)
         same_type = [d for d in prior if is_weekend(d) == want_weekend]

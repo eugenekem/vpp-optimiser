@@ -1,6 +1,6 @@
 # VPP Optimiser — Project Briefing
-**Version:** 16.0
-**Status:** Phase 1 historical replay complete. Phase 2 shadow trading (shadow.py) built. DA price forecasting baselines measured against 730 days of backfilled history (v16) — **conclusion: price history alone is not enough; the bottleneck is predictive inputs, not more data.** Forecasts NOT wired into dispatch. Still not a live-trading system: all trading logic decides on published (already-known) prices — see sections 10b, 16 and 18.
+**Version:** 17.0
+**Status:** Phase 1 historical replay complete. Phase 2 shadow trading (shadow.py) built. DA price forecasting now uses Elexon's **day-ahead wind/solar forecast** — **+18.0% skill vs naive over 696 days, verified against a control**, nearly triple the best history-only method. But period-selection accuracy barely improved, so tradeability is unproven. Forecasts NOT wired into dispatch. Still not a live-trading system: all trading logic decides on published (already-known) prices — see sections 10b, 16 and 18.
 
 ---
 
@@ -193,27 +193,35 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 **Script:** `models/forecast.py`
 **Outputs:** `data/forecast_{date}.csv` (predictions), `data/forecast_accuracy.csv` (scores)
 
-Three deliberately simple methods, walk-forward validated (each day predicted using only prior days — leakage-guarded and verified):
+Walk-forward validated — each day predicted using only prior days. Leakage guard verified for every method, including `regression` (confirmed it never reads the target day's actuals or any later date).
 
 | Method | Description |
 |---|---|
 | `naive` | Copy the most recent available day — the benchmark to beat |
 | `mean_7` | Per-settlement-period mean of last 7 available days |
-| `weekday` | As above, but weekday days predict weekdays, weekend days predict weekends |
+| `mean_90` | Same, over 90 days — **a control**, matching the regression's training window |
+| `weekday` | Per-period mean, weekdays predicting weekdays and weekends weekends |
+| `regression` | Per-period least-squares fit of price against Elexon's **day-ahead wind and solar forecast** (90-day window) |
 
-**Definitive results — walk-forward over 730 days (3 Aug 2024 – 3 Aug 2026), full backfilled history:**
+**Definitive results — walk-forward over 696 days scored by all five methods (3 Aug 2024 – 3 Aug 2026):**
 
 | Method | Days | MAE | RMSE | Cheap-4 hits | Peak-4 hits | Skill vs naive |
 |---|---|---|---|---|---|---|
-| naive | 730 | £23.00 | £29.16 | 0.8 / 4 | 1.7 / 4 | — |
-| **mean_7** | 730 | **£21.51** | **£26.26** | **1.1 / 4** | **2.2 / 4** | **+6.5%** |
-| weekday | 730 | £21.72 | £26.42 | 1.1 / 4 | 2.1 / 4 | +5.5% |
+| naive | 696 | £22.76 | £28.92 | 0.9 / 4 | 1.7 / 4 | — |
+| mean_7 | 696 | £21.28 | £26.07 | 1.1 / 4 | 2.2 / 4 | +6.5% |
+| mean_90 *(control)* | 696 | £22.74 | £27.25 | 1.1 / 4 | 1.8 / 4 | +0.1% |
+| weekday | 696 | £21.46 | £26.18 | 1.1 / 4 | 2.2 / 4 | +5.7% |
+| **regression** | 696 | **£18.67** | **£22.78** | **1.3 / 4** | **2.2 / 4** | **+18.0%** |
 
-**⚠️ This supersedes the earlier 30-day result, which was misleading.** On the 30-day sample, `weekday` appeared to beat naive by **+15.8%** and was recorded here as "real signal, not noise." With 24× more data that claim does not hold: skill collapses to **+5.5%**, and `weekday` is now *slightly worse* than plain `mean_7`. The weekday/weekend split was fitting small-sample noise. This is exactly the failure mode the backfill was meant to expose, and it is the single most valuable result of v16.
+All methods are compared on **identical days** — `regression` covers fewer days (no wind/solar published for 4 dates, plus its 90-day warm-up), and averaging each method over whatever days it happened to cover would not be like-for-like.
 
-**Key finding — more history did not fix accuracy.** Going from 30 → 730 days moved skill from an illusory +15.8% to a real +6.5%. Beating "copy yesterday" by 6.5% is not a trading edge. Most telling is the **Cheap-4 hit rate of 1.1/4** — the forecast correctly identifies only ~28% of the genuinely cheapest periods (barely above the ~8% you would get at random, but nowhere near usable). For a battery, *picking the right periods* is the entire source of profit.
+**Result 1 — predictive inputs work, and the v16 hypothesis was correct.** Adding the day-ahead wind/solar forecast nearly triples skill over the best history-only method (+18.0% vs +6.5%). This confirms the v16 conclusion that the bottleneck was *inputs*, not more history.
 
-**Conclusion:** the bottleneck is **inputs, not history**. Price history alone cannot predict GB price shape, because shape is driven by fundamentals the model cannot see — wind and solar output, demand, and gas prices. Adding more years, or more elaborate statistics over the same single variable, is very unlikely to help. Next real step is predictive features (see section 16), not a bigger model. Wiring `forecast.py` into `dispatcher.py` remains premature.
+**Result 2 — the `mean_90` control rules out the obvious confound.** The regression trains on 90 days while `mean_7` uses 7, so the gain could have come from the longer window rather than from wind/solar. It did not: `mean_90` scores **+0.1%**, i.e. a 90-day average is no better than copying yesterday. The improvement is genuinely attributable to the renewable-generation signal.
+
+**Result 3 — but period *selection* barely improved.** Cheap-4 hits moved only 1.1 → 1.3 / 4, and Peak-4 did not move at all (2.2 / 4). The model got substantially better at predicting the *level* of prices without getting much better at identifying *which* periods are cheapest. For a battery, period selection is the entire source of profit, so **this is not yet demonstrated to be tradeable**, despite the strong MAE result.
+
+**Conclusion:** a real, verified improvement, and the first method with a credible claim to signal. Still not wired into dispatch. The next question is no longer "is the forecast more accurate" (yes, measurably) but **"does that accuracy convert into P&L"** — which MAE cannot answer. See section 16 for the proposed test.
 
 ---
 
@@ -259,8 +267,11 @@ Three deliberately simple methods, walk-forward validated (each day predicted us
 | Phase 2 shadow trading (shadow.py) | ✅ Done |
 | DA price forecast baselines + accuracy scoring (forecast.py) | ✅ Done |
 | Backfill 730 days of price history (backfill.py) | ✅ Done |
-| Add predictive features (wind/solar/demand forecasts) — the real blocker | ⬜ Next |
-| Improve forecast accuracy to a tradeable level | ⬜ Blocked on features above |
+| Add wind/solar day-ahead forecast feed (fetch_wind_solar.py, 726 days) | ✅ Done |
+| Regression price model on wind/solar (+18.0% skill, control-verified) | ✅ Done |
+| Test whether forecast accuracy converts into P&L — the real question now | ⬜ Next |
+| Add demand forecast as a further feature | ⬜ To do |
+| Fix clock-change crash in dispatcher.py (replay/shadow break on 2 dates) | ⬜ To do |
 | Wire forecast into dispatch (blocked on accuracy) | ⬜ To do |
 | Stochastic optimisation | ⬜ To do |
 | AI agent layer | ⬜ To do |
@@ -299,7 +310,9 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 
 - **Price forecasting remains the blocker for real trading — now started, not solved.** Phase 1 (replay.py) and Phase 2 (shadow.py) both decide using published/already-known prices. `forecast.py` (v15) established measured baselines, but accuracy is not yet tradeable (see section 10b). Open questions from here:
   - **More history is the likely bottleneck.** Only ~30 clean consecutive days exist. Backfilling `market_index_*.csv` across many months would enable both better methods and honest validation. Cheapest, highest-value next step.
-  - **Predictive features not yet usable.** Wind/solar generation forecasts and demand forecasts drive GB price shape far more than price history alone. Requires a forward-looking weather feed — `fetch_weather.py` currently uses Open-Meteo's *archive* endpoint (past weather); a forecast endpoint would be needed.
+  - **✅ RESOLVED (v17) — predictive features work.** Elexon publishes a day-ahead wind/solar generation forecast (`/forecast/generation/wind-and-solar/day-ahead`, ~16:45 the evening before delivery, history back past 2023). Now fetched by `scripts/fetch_wind_solar.py` and used by the `regression` method: +18.0% skill vs +6.5% for the best history-only method, with a `mean_90` control confirming the gain is from the renewable signal and not the longer training window. Open-Meteo was **not** needed — Elexon's own feed is better (it is a generation forecast, not weather requiring conversion) and uses infrastructure already in place.
+  - **The open question is now tradeability, not accuracy.** MAE improved sharply but Cheap-4 period selection barely moved (1.1 → 1.3 / 4) and Peak-4 not at all. Since a battery earns from *picking periods*, better MAE may not mean better P&L. **Proposed test:** run `dispatcher.py` twice over the same historical days — once on forecast prices, once on actual prices (perfect foresight) — and compare realised P&L. That measures what actually matters, in £, and directly answers whether to wire forecasts into dispatch. The forecast file format is already dispatcher-compatible, so this is a small piece of work.
+  - **Demand forecast still unused.** `/forecast/demand/day-ahead` returns only the current forecast (no date range); the `/history` variant is keyed by `publishTime`, so backfilling it is fiddlier than wind/solar was. Worth adding after the P&L test.
   - Whether to forecast the *price level* at all, versus directly forecasting the *ranking* of periods (cheapest→priciest), since dispatch only needs the ordering. Possibly an easier and more directly useful target.
   - How to represent forecast uncertainty so the optimiser can hedge rather than trust a single predicted path (links to stochastic optimisation below).
 - Stochastic optimisation — price uncertainty modelling approaches
@@ -327,3 +340,5 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 ---
 
 *Update to the next version when major decisions or scope changes are agreed.*
+- **v17 — wind/solar day-ahead forecast added; predictive inputs confirmed to work.** `scripts/fetch_wind_solar.py` backfilled 726 of 730 days (4 dates return HTTP 200 with zero rows — genuine Elexon publication gaps, not a script fault). New `regression` method in `forecast.py`: per-settlement-period least squares of price against forecast wind and solar, 90-day rolling window, extrapolation clamped to the observed training range. **+18.0% skill vs naive.** Two methodology safeguards worth keeping: (1) a `mean_90` control was added specifically to rule out the longer training window as the cause — it scored +0.1%, isolating the gain to the renewable signal; (2) `backtest()` now scores all methods on identical days only, since `regression` covers fewer days and comparing different samples would flatter it. Both guards exist because v16's `weekday` result was a small-sample illusion — assume any new improvement is a confound until a control says otherwise.
+- **⚠️ Feature/price alignment is deliberate — do not "fix" `fetch_wind_solar.py` in isolation.** It mirrors `fetch_da_prices.py`'s UTC-calendar-day window on `startTime` rather than filtering to its own settlement date. This is intentional: it makes `wind_solar_{D}.csv` line up row-for-row with `market_index_{D}.csv`, so the same `settlementPeriod` means the same real half-hour in both. Filtering wind/solar to settlement date D while prices remain on the UTC-window convention would put features and target 24 hours apart for SP1–2. If the settlement-date misalignment is ever fixed, **both feeds must be fixed together**.
