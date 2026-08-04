@@ -1,6 +1,6 @@
 # VPP Optimiser — Project Briefing
-**Version:** 15.0
-**Status:** Phase 1 historical replay complete — 30 days validated. Phase 2 shadow trading (shadow.py) built. DA price forecasting started (forecast.py) — first baselines built and measured, NOT yet wired into dispatch. Still not a live-trading system: all trading logic decides on published (already-known) prices — see sections 16 and 18.
+**Version:** 16.0
+**Status:** Phase 1 historical replay complete. Phase 2 shadow trading (shadow.py) built. DA price forecasting baselines measured against 730 days of backfilled history (v16) — **conclusion: price history alone is not enough; the bottleneck is predictive inputs, not more data.** Forecasts NOT wired into dispatch. Still not a live-trading system: all trading logic decides on published (already-known) prices — see sections 10b, 16 and 18.
 
 ---
 
@@ -60,6 +60,7 @@ All pipelines operational, data saved to `/data`, pushed to GitHub.
 |---|---|---|---|
 | System prices (SSP/SBP) | Elexon BMRS | `fetch_bmrs.py` | Accepts optional date arg |
 | Market index prices (MID) | Elexon BMRS | `fetch_da_prices.py` | Accepts optional date arg |
+| Bulk historical backfill | Elexon BMRS | `scripts/backfill.py` | Loops the two fetch scripts over a date range; skips existing files so it is resumable |
 | DC forecast (4-day) | NESO Data Portal | `fetch_dc_tenders.py` | |
 | Weather | Open-Meteo | `fetch_weather.py` | |
 | Solar generation | Sheffield Solar PV_Live | `fetch_solar.py` | |
@@ -200,19 +201,19 @@ Three deliberately simple methods, walk-forward validated (each day predicted us
 | `mean_7` | Per-settlement-period mean of last 7 available days |
 | `weekday` | As above, but weekday days predict weekdays, weekend days predict weekends |
 
-**Results on the clean 30-day block (31 May – 22 Jun, full 7-day history available):**
+**Definitive results — walk-forward over 730 days (3 Aug 2024 – 3 Aug 2026), full backfilled history:**
 
 | Method | Days | MAE | RMSE | Cheap-4 hits | Peak-4 hits | Skill vs naive |
 |---|---|---|---|---|---|---|
-| naive | 23 | £27.91 | £34.30 | 0.9 / 4 | 1.9 / 4 | — |
-| mean_7 | 23 | £25.44 | £30.04 | 1.4 / 4 | 2.3 / 4 | +8.9% |
-| **weekday** | 23 | **£23.51** | **£27.58** | **1.5 / 4** | **2.4 / 4** | **+15.8%** |
+| naive | 730 | £23.00 | £29.16 | 0.8 / 4 | 1.7 / 4 | — |
+| **mean_7** | 730 | **£21.51** | **£26.26** | **1.1 / 4** | **2.2 / 4** | **+6.5%** |
+| weekday | 730 | £21.72 | £26.42 | 1.1 / 4 | 2.1 / 4 | +5.5% |
 
-(Across all 38 available days including sparse April and the stale 29 Jul day, skill drops to +7.7% for `weekday` — the sparse history hurts, as expected.)
+**⚠️ This supersedes the earlier 30-day result, which was misleading.** On the 30-day sample, `weekday` appeared to beat naive by **+15.8%** and was recorded here as "real signal, not noise." With 24× more data that claim does not hold: skill collapses to **+5.5%**, and `weekday` is now *slightly worse* than plain `mean_7`. The weekday/weekend split was fitting small-sample noise. This is exactly the failure mode the backfill was meant to expose, and it is the single most valuable result of v16.
 
-**Key finding — read honestly:** `weekday` beats naive by ~16% on MAE, so the weekday/weekend split is real signal, not noise. **But absolute accuracy is poor for trading purposes:** MAE of £23.51/MWh against a typical daily spread of ~£60–100/MWh is a large error. Most telling is the Cheap-4 hit rate of 1.5/4 — the forecast identifies only ~37% of the genuinely cheapest periods, and peak identification (2.4/4) is better but still unreliable. For a battery, *picking the right periods* is what earns money, so these baselines are **not yet good enough to drive real dispatch decisions**.
+**Key finding — more history did not fix accuracy.** Going from 30 → 730 days moved skill from an illusory +15.8% to a real +6.5%. Beating "copy yesterday" by 6.5% is not a trading edge. Most telling is the **Cheap-4 hit rate of 1.1/4** — the forecast correctly identifies only ~28% of the genuinely cheapest periods (barely above the ~8% you would get at random, but nowhere near usable). For a battery, *picking the right periods* is the entire source of profit.
 
-**Conclusion:** treat these as the floor to beat, not a usable trading signal. Wiring `forecast.py` into `dispatcher.py` would be premature.
+**Conclusion:** the bottleneck is **inputs, not history**. Price history alone cannot predict GB price shape, because shape is driven by fundamentals the model cannot see — wind and solar output, demand, and gas prices. Adding more years, or more elaborate statistics over the same single variable, is very unlikely to help. Next real step is predictive features (see section 16), not a bigger model. Wiring `forecast.py` into `dispatcher.py` remains premature.
 
 ---
 
@@ -257,7 +258,9 @@ Three deliberately simple methods, walk-forward validated (each day predicted us
 | Phase 1 historical replay (replay.py) | ✅ Done |
 | Phase 2 shadow trading (shadow.py) | ✅ Done |
 | DA price forecast baselines + accuracy scoring (forecast.py) | ✅ Done |
-| Improve forecast accuracy to a tradeable level | ⬜ Next |
+| Backfill 730 days of price history (backfill.py) | ✅ Done |
+| Add predictive features (wind/solar/demand forecasts) — the real blocker | ⬜ Next |
+| Improve forecast accuracy to a tradeable level | ⬜ Blocked on features above |
 | Wire forecast into dispatch (blocked on accuracy) | ⬜ To do |
 | Stochastic optimisation | ⬜ To do |
 | AI agent layer | ⬜ To do |
@@ -317,6 +320,9 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 - **⚠️ Settlement-date misalignment in `market_index_*.csv` (found v15, NOT yet fixed).** Each file mixes two settlement dates. `fetch_da_prices.py` filters on `startTime` within a UTC calendar day, but during BST a GB settlement day starts at 23:00 UTC the evening before — so SP1–2 in `market_index_{D}.csv` actually belong to settlement date D+1, while SP3–48 belong to D. Verified in `market_index_2026-06-22.csv` (SP1 carries `settlementDate` 2026-06-23). Consistent across all files, so replay/shadow results are internally consistent and comparisons remain valid — but the mapping is off by two periods against true settlement days. **Must be resolved before live trading**, and it also mildly contaminates forecast training data. Affects `system_prices_*.csv` alignment too — needs checking.
 - **v15 — forecast.py added.** DA price forecasting baselines (`naive`, `mean_7`, `weekday`) plus walk-forward accuracy scoring. Writes only to `data/forecast_{date}.csv` — deliberately NEVER `market_index_{date}.csv`, since that filename is what `fetch_if_missing()` checks; writing there would make replay/shadow silently consume predictions as if they were real published prices. Leakage guard verified: forecasts for a date are identical whether or not that date's actuals are present. No existing files modified. Result recorded honestly in section 10b — beats naive, still not tradeable.
 - **v14 — shadow.py added.** Reuses `fetch_if_missing`/`classify_day` (from `replay.py`) and `run_dispatcher` (from `dispatcher.py`) unmodified — no changes to existing pipeline files. Appends one row per day to `data/shadow_pnl.csv` (idempotent — checks the `date` column before processing, safe to re-run). Supports `python shadow.py [YYYY-MM-DD]` for manual backfill of a missed day. Confirmed the pipeline does not consume solar/weather/DC-tender data, so those 3 date-locked fetch scripts (see section 5) are not a blocker for this.
+
+- **v16 — 730-day backfill + a corrected conclusion.** `scripts/backfill.py` extended price history from ~30 to 730 complete days (3 Aug 2024 – 3 Aug 2026, both feeds, zero gaps). Two lessons: (1) the v15 finding that `weekday` beat naive by +15.8% was **small-sample noise** — on 730 days it drops to +5.5% and is beaten by simpler `mean_7`. Small samples produce confident wrong answers; validate on the largest sample available before believing a result. (2) More history did **not** improve accuracy meaningfully, which redirects effort from "more/better statistics on price history" to "get predictive inputs" — a cheap experiment that killed an expensive wrong path.
+- **Clock-change days crash naive per-period indexing (found and fixed in v16).** On the spring clock-change Sunday (30 Mar 2025, 29 Mar 2026) the GB settlement day has only **46** periods, so the UTC-window fetch also captures SP1–2 of the next settlement date — producing duplicate `settlementPeriod` values with different prices, which raised `ValueError: cannot reindex on an axis with duplicate labels`. Fixed in `forecast.py::load_actual` by keeping the row whose `settlementDate` matches the file's own date (affects 2 of 731 files; normal days unchanged). **Note:** this is a symptom of the settlement-date misalignment logged above, not a full fix — autumn clock-change days (50 periods) are still silently truncated to 48 rows by the fetch window and have not been addressed. **`dispatcher.py` is also broken on these two dates — verified, not yet fixed.** It does `set_index("settlementPeriod")["price"]` with no de-duplication, so `price_series[t]` returns a 2-row Series instead of a float and the LP fails with `TypeError: cannot convert the series to <class 'float'>`. This means `replay.py` and `shadow.py` will crash (and skip the day) if they ever process 30 Mar 2025 or 29 Mar 2026. Not hit so far because neither has run over those dates. Fix by applying the same de-duplication used in `forecast.py::load_actual`.
 
 ---
 

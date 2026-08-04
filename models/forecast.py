@@ -52,6 +52,19 @@ def load_actual(date):
     if not os.path.exists(path):
         return None
     df = pd.read_csv(path)
+
+    # Each file is fetched by UTC start-time window, so during BST it also picks
+    # up SP1-2 of the *next* settlement date. Normally harmless (those periods
+    # appear once), but on the spring clock-change Sunday the settlement day has
+    # only 46 periods, so SP1-2 appear twice with different prices.
+    # Keep the row belonging to this file's own settlement date.
+    if df["settlementPeriod"].duplicated().any():
+        own = df[df["settlementDate"] == date]
+        other = df[df["settlementDate"] != date]
+        df = pd.concat([own, other]).drop_duplicates(
+            subset="settlementPeriod", keep="first"
+        )
+
     return df.set_index("settlementPeriod")["price"].sort_index()
 
 
