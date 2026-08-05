@@ -1,6 +1,7 @@
 # VPP Optimiser — Project Briefing
-**Version:** 17.0
-**Status:** Phase 1 historical replay complete. Phase 2 shadow trading (shadow.py) built. DA price forecasting now uses Elexon's **day-ahead wind/solar forecast** — **+18.0% skill vs naive over 696 days, verified against a control**, nearly triple the best history-only method. But period-selection accuracy barely improved, so tradeability is unproven. Forecasts NOT wired into dispatch. Still not a live-trading system: all trading logic decides on published (already-known) prices — see sections 10b, 16 and 18.
+**Version:** 18.0
+**Status:** Phase 1 replay and Phase 2 shadow trading built. DA price forecasting uses Elexon's **day-ahead wind/solar forecast**: +18.0% accuracy skill vs naive, and — the number that matters — **85.9% capture of perfect-foresight P&L vs 81.5% for the best history-only method**, over 696 days, robustness-checked and not outlier-driven (section 10c). Demand forecast feed built and backfilling; not yet in the model. Forecasts still NOT wired into dispatch.
+**Reading this for anything external:** use section 10c, quoted as a *capture ratio*, with its caveats. **Section 10's £1.9M / £63k-per-day figures are perfect-foresight and must never be presented as trading results.**
 
 ---
 
@@ -167,6 +168,11 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 
 ## 10. Phase 1 Historical Replay Results
 
+> **⚠️ PERFECT-FORESIGHT NUMBERS — NOT A TRADING RESULT. DO NOT USE EXTERNALLY.**
+> Every figure below was produced by optimising against prices that were **already published and known**. It is the profit a crystal ball would earn, not what this system can make. It validates that the dispatch logic and constraints work — that was its purpose — and nothing more.
+> The comparable perfect-foresight DA figure in section 10c is £33,503/day; the best *forecast-driven* result is £28,764/day (85.9% capture), and even that excludes spreads, transaction costs, market impact and degradation.
+> Any external or investor-facing claim must come from section 10c, stated as a capture ratio, with its caveats attached. A technical reviewer will ask whether a backtest used realised prices; presenting these numbers without this warning would be indefensible.
+
 **Script:** `models/replay.py`
 **Output:** `data/replay_pnl.csv`
 
@@ -221,7 +227,36 @@ All methods are compared on **identical days** — `regression` covers fewer day
 
 **Result 3 — but period *selection* barely improved.** Cheap-4 hits moved only 1.1 → 1.3 / 4, and Peak-4 did not move at all (2.2 / 4). The model got substantially better at predicting the *level* of prices without getting much better at identifying *which* periods are cheapest. For a battery, period selection is the entire source of profit, so **this is not yet demonstrated to be tradeable**, despite the strong MAE result.
 
-**Conclusion:** a real, verified improvement, and the first method with a credible claim to signal. Still not wired into dispatch. The next question is no longer "is the forecast more accurate" (yes, measurably) but **"does that accuracy convert into P&L"** — which MAE cannot answer. See section 16 for the proposed test.
+**Conclusion:** a real, verified improvement, and the first method with a credible claim to signal. The open question — does accuracy convert into money — is now answered in section 10c.
+
+---
+
+## 10c. Forecast → P&L: does accuracy actually earn money?
+
+**Script:** `models/forecast_pnl.py` **Output:** `data/forecast_pnl.csv`
+
+MAE cannot answer whether a forecast is worth trading on. This test does, in pounds. For each day, a dispatch schedule is built using **forecast** prices (what you could actually commit to day-ahead), then settled at **actual** prices (what you really get paid). The `perfect` arm optimises on actual prices — the crystal-ball ceiling — so each method can be scored as a *capture ratio*: the share of theoretically available money it actually won.
+
+**Results — 696 days (35 skipped), DA layer only:**
+
+| Arm | Total P&L | Per day | Capture |
+|---|---|---|---|
+| `perfect` *(not tradeable)* | £23,317,960 | £33,503 | 100.0% |
+| naive | £16,838,330 | £24,193 | 72.2% |
+| mean_7 | £19,001,647 | £27,301 | 81.5% |
+| **regression** | **£20,019,765** | **£28,764** | **85.9%** |
+
+**Headline: the wind/solar forecast captures 85.9% of perfect-foresight profit**, versus 81.5% for the best history-only method and 72.2% for copying yesterday — worth **£1.02M more than `mean_7`** across 696 days.
+
+**Accuracy converts to money, but at a discount.** The +18.0% MAE improvement produced +5.4% more P&L — roughly a third of the accuracy gain reached the bottom line. This is consistent with the section 10b finding that period *selection* barely improved: the optimiser only needs the price *ranking* to be right, so better level accuracy is partly wasted on it. Anyone reasoning from MAE alone would have overstated the commercial value by ~3×.
+
+**Robustness — checked, and it holds:**
+- Beats `mean_7` on **406 of 696 days (58.3%)** — a real but not overwhelming edge.
+- **Top 5 days account for only 15.0% of the total advantage**, so this is broad-based, not a few lucky outliers.
+- Median daily capture **88.7%**; 25th percentile 81.3%; 10th percentile 71.1%. Only 1 day of negative P&L, 12 days below 50% capture.
+- Mean daily advantage (£1,463) far exceeds the median (£516) — the edge is right-skewed. It comes mainly from days when renewables swing unusually and price history is blind while the wind forecast is not (e.g. 2025-05-27: `mean_7` £3,922 vs `regression` £40,287). That is a coherent mechanism, not a statistical artefact.
+
+**⚠️ What this number is NOT.** It remains a backtest, and must not be presented as a trading track record. It assumes execution of the full volume at the published market-index price, with **no bid/offer spread, no transaction costs, no market impact** (a ~145 MW portfolio bidding into GB DA would move the price against itself), **no battery degradation cost**, and perfect availability. The realistic figure is lower. The defensible claim is the *relative* one — 85.9% vs 81.5% capture, measured like-for-like on identical days — not the absolute pound total.
 
 ---
 
@@ -269,8 +304,9 @@ All methods are compared on **identical days** — `regression` covers fewer day
 | Backfill 730 days of price history (backfill.py) | ✅ Done |
 | Add wind/solar day-ahead forecast feed (fetch_wind_solar.py, 726 days) | ✅ Done |
 | Regression price model on wind/solar (+18.0% skill, control-verified) | ✅ Done |
-| Test whether forecast accuracy converts into P&L — the real question now | ⬜ Next |
-| Add demand forecast as a further feature | ⬜ To do |
+| Test whether forecast accuracy converts into P&L (forecast_pnl.py) | ✅ Done — 85.9% capture |
+| Add demand forecast as a feature (fetch_demand.py built, backfilling) | 🔄 In progress |
+
 | Fix clock-change crash in dispatcher.py (replay/shadow break on 2 dates) | ⬜ To do |
 | Wire forecast into dispatch (blocked on accuracy) | ⬜ To do |
 | Stochastic optimisation | ⬜ To do |
@@ -342,3 +378,5 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 *Update to the next version when major decisions or scope changes are agreed.*
 - **v17 — wind/solar day-ahead forecast added; predictive inputs confirmed to work.** `scripts/fetch_wind_solar.py` backfilled 726 of 730 days (4 dates return HTTP 200 with zero rows — genuine Elexon publication gaps, not a script fault). New `regression` method in `forecast.py`: per-settlement-period least squares of price against forecast wind and solar, 90-day rolling window, extrapolation clamped to the observed training range. **+18.0% skill vs naive.** Two methodology safeguards worth keeping: (1) a `mean_90` control was added specifically to rule out the longer training window as the cause — it scored +0.1%, isolating the gain to the renewable signal; (2) `backtest()` now scores all methods on identical days only, since `regression` covers fewer days and comparing different samples would flatter it. Both guards exist because v16's `weekday` result was a small-sample illusion — assume any new improvement is a confound until a control says otherwise.
 - **⚠️ Feature/price alignment is deliberate — do not "fix" `fetch_wind_solar.py` in isolation.** It mirrors `fetch_da_prices.py`'s UTC-calendar-day window on `startTime` rather than filtering to its own settlement date. This is intentional: it makes `wind_solar_{D}.csv` line up row-for-row with `market_index_{D}.csv`, so the same `settlementPeriod` means the same real half-hour in both. Filtering wind/solar to settlement date D while prices remain on the UTC-window convention would put features and target 24 hours apart for SP1–2. If the settlement-date misalignment is ever fixed, **both feeds must be fixed together**.
+- **v18 — forecast accuracy converts to money, but at roughly a third of the rate MAE implies.** `forecast_pnl.py` settles forecast-built dispatch at actual prices. The regression's +18.0% MAE advantage produced only **+5.4% P&L** over `mean_7`. Consistent with section 10b: the LP only needs the price *ranking*, so improvements in level accuracy are largely wasted on it. **Lesson: never quote a forecast-accuracy improvement as if it were a commercial one** — reasoning from MAE alone would have overstated the value ~3×. Robustness checked before believing the result: wins 58.3% of days, top-5 days only 15.0% of the advantage, and the edge is right-skewed (mean £1,463 vs median £516) because it comes from days when renewables swing and price history is blind. That is a mechanism, not an artefact.
+- **`fetch_demand.py` uses a different alignment convention on purpose.** Prices and wind/solar use a UTC-calendar-day window on `startTime`; demand rows are stored with their own `settlementDate`. Joining demand to prices must therefore key on **(settlementDate, settlementPeriod)**, not settlementPeriod alone, or the two will sit two periods apart during BST and be correct during GMT — a seasonal bug that would pass a spot check in winter. Integration deliberately deferred rather than rushed unattended.
