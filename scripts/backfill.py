@@ -27,6 +27,7 @@ FEEDS = [
     ("fetch_da_prices.py",  "market_index"),
     ("fetch_bmrs.py",       "system_prices"),
     ("fetch_wind_solar.py", "wind_solar"),
+    ("fetch_demand.py",     "demand"),
 ]
 
 
