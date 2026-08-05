@@ -10,7 +10,8 @@ from config import DA_RESERVATION, DURATION, SOC_INIT
 
 # --- LP Optimiser for single battery ---
 
-def optimise_battery_lp(battery, price_series, committed_capacity=1.0, initial_soc_mwh=None):
+def optimise_battery_lp(battery, price_series, committed_capacity=1.0, initial_soc_mwh=None,
+                        cost_discharge=0.0, cost_charge=0.0):
     """
     Solve the LP dispatch problem for a single battery across all 48 periods.
 
@@ -25,6 +26,13 @@ def optimise_battery_lp(battery, price_series, committed_capacity=1.0, initial_s
     initial_soc_mwh : float or None
         Starting SOC in MWh. If None, defaults to SOC_INIT * capacity_mwh.
         Used for sequential SOC handoff between DA -> ID -> BM layers.
+    cost_discharge, cost_charge : float
+        Execution costs in £/MWh, subtracted from the discharge price and added
+        to the charge price inside the objective. Making the optimiser
+        cost-AWARE stops it cycling for spreads too thin to cover the cost —
+        a cost-blind schedule loses money on those trades once costs are
+        settled. Default 0.0 preserves the original costless behaviour, so
+        replay.py / shadow.py results are unchanged unless costs are passed.
 
     Returns
     -------
@@ -54,7 +62,8 @@ def optimise_battery_lp(battery, price_series, committed_capacity=1.0, initial_s
 
     # --- Objective function ---
     prob += pulp.lpSum([
-        discharge[t] * price_series[t] * DURATION - charge[t] * price_series[t] * DURATION
+        discharge[t] * (price_series[t] - cost_discharge) * DURATION
+        - charge[t] * (price_series[t] + cost_charge) * DURATION
         for t in T
     ]), "total_net_revenue"
 

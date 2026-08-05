@@ -40,6 +40,25 @@ SOC_CEIL   = 0.90       # Maximum SOC (90%)
 SOC_INIT   = 0.50       # Initial SOC (50%)
 DURATION   = 0.50       # Settlement period duration (hours)
 
+# --- Execution costs (£/MWh) ---
+#
+# Everything before v20 assumed costless trading of unlimited volume at the
+# published market-index price. These are the costs that gap sits on. They are
+# the single biggest difference between a backtest number and a real one.
+#
+# "Central" GB BESS assumptions — deliberately middle-of-the-road, and the
+# figures a technical reviewer is most likely to probe. Override per run.
+#
+COST_DEGRADATION = 4.00   # per MWh DISCHARGED — battery life consumed by cycling
+COST_FEE         = 0.15   # per MWh traded, both directions — exchange + clearing
+COST_IMPACT      = 0.75   # per MWh traded, both directions — own-bid price impact
+                          # (a ~145 MW book is a non-trivial share of a GB DA
+                          #  half-hour, so it moves the price against itself)
+
+# Applied as: discharge earns (price - IMPACT - FEE - DEGRADATION)
+#             charge   pays  (price + IMPACT + FEE)
+# Degradation is charged on discharge only, i.e. per MWh delivered.
+
 # --- Intraday price simulation ---
 ID_SPREAD_MEAN = 0.0    # £/MWh — intraday prices centred on DA
 ID_SPREAD_STD  = 5.0    # £/MWh — typical intraday volatility around DA

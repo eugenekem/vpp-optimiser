@@ -6,7 +6,8 @@ from datetime import datetime
 
 sys.path.append(".")
 from battery import assets
-from config import ID_RESERVATION, BM_RESERVATION, SOC_INIT, DURATION
+from config import (ID_RESERVATION, BM_RESERVATION, SOC_INIT, DURATION,
+                    COST_DEGRADATION, COST_FEE, COST_IMPACT)
 from optimiser_lp import optimise_battery_lp
 import forecast as F
 
@@ -44,22 +45,28 @@ OUT_PATH = f"{DATA_DIR}/forecast_pnl.csv"
 ARMS = ["perfect", "naive", "mean_7", "regression", "reg_demand"]
 
 
-def settle(schedule, actual_prices):
+def settle(schedule, actual_prices, with_costs=False):
     """
     Pay a dispatch schedule at the prices that actually happened.
 
     Revenue on discharge, cost on charge, both at the real settled price —
     regardless of what price the schedule was built on.
+
+    with_costs applies the execution costs from config.py: degradation on
+    discharged MWh, plus fees and own-bid price impact in both directions.
     """
     df = schedule[schedule["settlement_period"].isin(actual_prices.index)].copy()
     if df.empty:
         return None
     paid = df["settlement_period"].map(actual_prices)
 
+    d_adj = (COST_IMPACT + COST_FEE + COST_DEGRADATION) if with_costs else 0.0
+    c_adj = (COST_IMPACT + COST_FEE) if with_costs else 0.0
+
     disch = df["action"] == "discharge"
     chg = df["action"] == "charge"
-    revenue = (df.loc[disch, "power_mw"] * paid[disch] * DURATION).sum()
-    cost = (df.loc[chg, "power_mw"] * paid[chg] * DURATION).sum()
+    revenue = (df.loc[disch, "power_mw"] * (paid[disch] - d_adj) * DURATION).sum()
+    cost = (df.loc[chg, "power_mw"] * (paid[chg] + c_adj) * DURATION).sum()
     return revenue - cost
 
 
@@ -84,19 +91,35 @@ def run_day(date, history):
 
     results = {}
     for arm, prices in price_views.items():
-        total = 0.0
+        totals = {"free": 0.0, "blind": 0.0, "aware": 0.0}
         for battery in assets:
             da_committed = 1 - (ID_RESERVATION[battery.name] + BM_RESERVATION[battery.name])
-            schedule, _, _ = optimise_battery_lp(
+            kw = dict(committed_capacity=da_committed,
+                      initial_soc_mwh=SOC_INIT * battery.capacity_mwh)
+
+            # Cost-blind schedule: the optimiser ignores costs (as before).
+            # Settled both without costs (the old headline) and with costs
+            # (what that same schedule would really have earned).
+            sched_blind, _, _ = optimise_battery_lp(battery, prices, **kw)
+
+            # Cost-aware schedule: costs are inside the objective, so thin
+            # spreads that cannot cover them are simply not traded.
+            sched_aware, _, _ = optimise_battery_lp(
                 battery, prices,
-                committed_capacity=da_committed,
-                initial_soc_mwh=SOC_INIT * battery.capacity_mwh,
-            )
-            pnl = settle(schedule, actual)
-            if pnl is None:
+                cost_discharge=COST_IMPACT + COST_FEE + COST_DEGRADATION,
+                cost_charge=COST_IMPACT + COST_FEE,
+                **kw)
+
+            free = settle(sched_blind, actual, with_costs=False)
+            blind = settle(sched_blind, actual, with_costs=True)
+            aware = settle(sched_aware, actual, with_costs=True)
+            if None in (free, blind, aware):
                 return None
-            total += pnl
-        results[arm] = total
+            totals["free"] += free
+            totals["blind"] += blind
+            totals["aware"] += aware
+
+        results[arm] = totals
 
     return results
 
@@ -126,7 +149,11 @@ def main(limit=None):
         if res is None:
             skipped += 1
         else:
-            rows.append({"date": date, **res})
+            flat = {"date": date}
+            for arm, t in res.items():
+                for variant, v in t.items():
+                    flat[f"{arm}__{variant}"] = v
+            rows.append(flat)
 
         if i % 25 == 0 or i == len(dates):
             el = (datetime.now() - t0).total_seconds()
@@ -145,28 +172,49 @@ def main(limit=None):
     print(f"RESULTS — {len(df)} days scored, {skipped} skipped")
     print("=" * 72)
 
-    perfect_total = df["perfect"].sum()
+    print(f"\nCosts applied: degradation £{COST_DEGRADATION:.2f}/MWh discharged, "
+          f"fees £{COST_FEE:.2f}/MWh, impact £{COST_IMPACT:.2f}/MWh (both ways)")
 
-    print(f"\n{'arm':<12} {'total P&L':>16} {'per day':>13} {'capture':>10}")
-    print("-" * 72)
+    ceiling_free = df["perfect__free"].sum()
+    ceiling_aware = df["perfect__aware"].sum()
+
+    print(f"\n{'arm':<12} {'no costs':>14} {'costs, blind':>15} "
+          f"{'costs, aware':>15} {'capture':>9}")
+    print("-" * 76)
     for arm in ARMS:
-        total = df[arm].sum()
-        capture = total / perfect_total * 100 if perfect_total else float("nan")
+        free = df[f"{arm}__free"].sum()
+        blind = df[f"{arm}__blind"].sum()
+        aware = df[f"{arm}__aware"].sum()
+        cap = aware / ceiling_aware * 100 if ceiling_aware else float("nan")
         label = arm + (" *" if arm == "perfect" else "")
-        print(f"{label:<12} £{total:>15,.0f} £{total/len(df):>12,.0f} {capture:>9.1f}%")
-    print("-" * 72)
-    print("* perfect = optimised on actual prices (crystal ball).")
-    print("  NOT a tradeable result — it is the ceiling, used to measure capture.")
-    print("  capture = share of that ceiling each real method actually won.")
+        print(f"{label:<12} £{free:>13,.0f} £{blind:>14,.0f} "
+              f"£{aware:>14,.0f} {cap:>8.1f}%")
+    print("-" * 76)
+    print("no costs     = the old headline: costless trading at the index price")
+    print("costs, blind = same schedule, but costs actually charged")
+    print("costs, aware = optimiser knows the costs and skips uneconomic cycling")
+    print("capture      = share of the cost-aware perfect-foresight ceiling")
+    print("* perfect = optimised on actual prices. NOT tradeable — the ceiling only.")
 
-    # The question that matters: does the more accurate forecast earn more?
-    reg, base = df["regression"].sum(), df["mean_7"].sum()
+    # How much of the old headline survives once trading is not free?
+    best = "reg_demand" if "reg_demand" in ARMS else "regression"
+    b_free, b_blind, b_aware = (df[f"{best}__free"].sum(),
+                                df[f"{best}__blind"].sum(),
+                                df[f"{best}__aware"].sum())
+    print(f"\n--- {best}: what costs actually do ---")
+    print(f"  costless headline        £{b_free:>13,.0f}")
+    print(f"  after costs, cost-blind  £{b_blind:>13,.0f}  "
+          f"({(b_blind-b_free)/abs(b_free)*100:+.1f}%)")
+    print(f"  after costs, cost-aware  £{b_aware:>13,.0f}  "
+          f"({(b_aware-b_free)/abs(b_free)*100:+.1f}% vs costless)")
+    if b_blind:
+        print(f"  value of cost-awareness  £{b_aware-b_blind:>13,.0f}  "
+              f"({(b_aware-b_blind)/abs(b_blind)*100:+.1f}% vs trading blind)")
+
+    reg, base = df[f"{best}__aware"].sum(), df["mean_7__aware"].sum()
     if base:
-        delta = (reg - base) / abs(base) * 100
-        print(f"\nregression vs mean_7: {delta:+.1f}% P&L "
-              f"(£{reg - base:,.0f} over {len(df)} days)")
-        print("Compare against the +18.0% MAE improvement — if P&L barely moves,")
-        print("better price accuracy is NOT translating into better decisions.")
+        print(f"\n{best} vs mean_7, both cost-aware: "
+              f"{(reg-base)/abs(base)*100:+.1f}% P&L (£{reg-base:,.0f})")
 
     print(f"\nSaved per-day detail to {OUT_PATH}")
 

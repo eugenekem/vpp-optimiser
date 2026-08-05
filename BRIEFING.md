@@ -1,5 +1,5 @@
 # VPP Optimiser — Project Briefing
-**Version:** 19.0
+**Version:** 20.0
 **Status:** Phase 1 replay and Phase 2 shadow trading built. DA price forecasting uses Elexon's **day-ahead wind/solar forecast**: +18.0% accuracy skill vs naive, and — the number that matters — **87.1% capture of perfect-foresight P&L vs 81.5% for the best history-only method**, over 681 days, robustness-checked and not outlier-driven (section 10c). Demand forecast now included (+24.5% accuracy skill). **Accuracy gains are converting to profit at a sharply diminishing rate — see 10c; further forecast work is near exhausted as a strategy.** Forecasts still NOT wired into dispatch.
 **Reading this for anything external:** use section 10c, quoted as a *capture ratio*, with its caveats. **Section 10's £1.9M / £63k-per-day figures are perfect-foresight and must never be presented as trading results.**
 
@@ -271,6 +271,38 @@ Each increment of forecast accuracy buys **less** profit than the one before. De
 
 **⚠️ What this number is NOT.** It remains a backtest, and must not be presented as a trading track record. It assumes execution of the full volume at the published market-index price, with **no bid/offer spread, no transaction costs, no market impact** (a ~145 MW portfolio bidding into GB DA would move the price against itself), **no battery degradation cost**, and perfect availability. The realistic figure is lower. The defensible claim is the *relative* one — 85.9% vs 81.5% capture, measured like-for-like on identical days — not the absolute pound total.
 
+## 10d. Execution costs — closing the backtest-to-reality gap
+
+**Added v20.** Every figure before this assumed costless trading of unlimited volume at the published index price. Costs are now modelled in `config.py` and applied in two distinct ways, which are reported separately because they answer different questions.
+
+**Central GB assumptions:** degradation **£4.00/MWh discharged**, exchange + clearing fees **£0.15/MWh**, own-bid market impact **£0.75/MWh**, the last two charged in both directions. All configurable.
+
+**Results — 681 days, DA layer:**
+
+| Arm | No costs | Costs, blind | Costs, aware | Capture |
+|---|---|---|---|---|
+| `perfect` *(not tradeable)* | £22,860,519 | £21,060,646 | £21,171,775 | 100.0% |
+| naive | £16,488,388 | £14,693,909 | £15,033,114 | 71.0% |
+| mean_7 | £18,625,963 | £16,853,609 | £16,926,128 | 79.9% |
+| regression | £19,636,441 | £17,809,490 | £17,976,626 | 84.9% |
+| **reg_demand** | £19,904,993 | £18,037,449 | **£18,255,788** | **86.2%** |
+
+*blind* = the optimiser ignores costs (as before) but they are charged at settlement. *aware* = costs are inside the LP objective, so spreads too thin to cover them are not traded.
+
+**Result 1 — costs cost ~8%, not ~50%.** `reg_demand` falls from £19.90M to £18.26M (**−8.3%**), i.e. £29,229 → **£26,807 per day**. Less damaging than feared because this strategy earns from wide daily spreads (£30–60/MWh), which comfortably absorb a ~£5/MWh round trip. A thin-margin strategy would have been destroyed by the same assumptions.
+
+**Result 2 — cost-awareness is worth having but is not transformative: +1.2% (£218,339).** Most trades the optimiser makes are already well above the cost threshold, so declining the marginal ones recovers only a slice. Cheap to implement, so worth keeping.
+
+**Result 3 — costs make good forecasting MORE valuable, not less.** `reg_demand`'s advantage over `mean_7` *widens* from +6.87% to **+7.86%** once costs are charged. Costs penalise wrong trades harder than right ones, so forecast quality matters more in a realistic setting than a costless backtest implies. This is the opposite of the usual expectation and is the most commercially useful finding here.
+
+**⚠️ Capture fell slightly, 87.07% → 86.23% (−0.84 pts), and the reason matters.** Perfect foresight retained 92.6% of its costless P&L while `reg_demand` retained 91.7% — the crystal ball is hurt *less* by costs, because it only ever makes wide-margin trades, while a forecast makes marginal and occasionally wrong ones that costs punish hardest.
+
+**Never quote capture without the pounds.** Capture is a share of a moving ceiling: if costs or market conditions drag the ceiling down faster than your P&L, capture can *rise* while you earn *less*. (An earlier read of the 19-day test appeared to show exactly that, but was an artefact of comparing a 19-day sample against a 681-day one — a mistake worth not repeating.) Quote £/day alongside the ratio.
+
+**Still excluded:** imbalance exposure if delivery deviates from contract, availability/outages, non-linear market impact at larger volumes, and any ID/BM execution cost (this is the DA layer only). The realistic number remains below £26,807/day.
+
+---
+
 ---
 
 ## 11. Operating Model
@@ -319,7 +351,8 @@ Each increment of forecast accuracy buys **less** profit than the one before. De
 | Regression price model on wind/solar (+18.0% skill, control-verified) | ✅ Done |
 | Test whether forecast accuracy converts into P&L (forecast_pnl.py) | ✅ Done — 85.9% capture |
 | Add demand forecast as a feature (reg_demand) | ✅ Done — +1.2 pts capture |
-| Stochastic optimisation / execution realism — better return than more forecasting | ⬜ Next |
+| Execution costs modelled (config.py + cost-aware LP) | ✅ Done — 86.2% capture, £26.8k/day |
+| Stochastic optimisation — hedge across a price distribution | ⬜ Next |
 
 | Fix clock-change crash in dispatcher.py (replay/shadow break on 2 dates) | ⬜ To do |
 | Wire forecast into dispatch (blocked on accuracy) | ⬜ To do |
@@ -396,3 +429,4 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 - **`fetch_demand.py` uses a different alignment convention on purpose.** Prices and wind/solar use a UTC-calendar-day window on `startTime`; demand rows are stored with their own `settlementDate`. Joining demand to prices must therefore key on **(settlementDate, settlementPeriod)**, not settlementPeriod alone, or the two will sit two periods apart during BST and be correct during GMT — a seasonal bug that would pass a spot check in winter. Integration deliberately deferred rather than rushed unattended.
 - **v19 — demand forecast added; diminishing returns now the headline.** `reg_demand` (wind + solar + day-ahead national demand) reaches +24.5% accuracy skill and **87.1% P&L capture**. The gain over wind/solar alone is real and statistically solid (+1.37% P&L, £268,552 over 681 days, paired t = 3.57, top-5 days only 8.3% of the gain) but small. Conversion of accuracy into money fell from ~40% to ~18% between the two feature additions. **Treat further forecast-accuracy work as low-yield**; the remaining gap to perfect foresight is probably mostly irreducible. Note also that every P&L figure here still excludes spreads, transaction costs, market impact and degradation — closing that gap would change the numbers more than another feature would.
 - **Process failure worth remembering: a `pgrep -f "<pattern>"` wait loop matched its own command line.** A backgrounded `until ! pgrep -f "backfill.py"; do sleep 30; done` never exited, because the shell running it had `backfill.py` in its own command string. The backfill had finished normally; only the watcher hung, and it burned ~9 hours before anyone noticed. Use the bracket trick (`pgrep -f "[b]ackfill.py"`) or match on the interpreter, and **verify a watcher actually exits** rather than assuming it will.
+- **v20 — execution costs modelled; ~8% of P&L, and good forecasting matters MORE once costs are real.** Degradation/fees/impact are now in `config.py`, applied both at settlement and (optionally) inside the LP objective. `optimise_battery_lp` gained `cost_discharge`/`cost_charge`, **defaulting to 0.0 so replay.py and shadow.py results are unchanged** unless costs are passed explicitly. Headline: `reg_demand` £29,229 → **£26,807/day (−8.3%)**; cost-awareness worth +1.2%; and the forecast's edge over `mean_7` *widens* from +6.87% to +7.86%, because costs punish wrong trades harder than right ones. **Capture is a ratio to a moving ceiling — always quote £/day beside it**; an earlier claim that capture rose under costs was wrong, caused by comparing a 19-day sample with a 681-day one.
