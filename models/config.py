@@ -49,9 +49,17 @@ DURATION   = 0.50       # Settlement period duration (hours)
 # "Central" GB BESS assumptions — deliberately middle-of-the-road, and the
 # figures a technical reviewer is most likely to probe. Override per run.
 #
-COST_DEGRADATION = 4.00   # per MWh DISCHARGED — battery life consumed by cycling
-COST_FEE         = 0.15   # per MWh traded, both directions — exchange + clearing
-COST_IMPACT      = 0.75   # per MWh traded, both directions — own-bid price impact
+# Overridable per-run via environment variables so a sensitivity sweep can vary
+# them in subprocesses without editing this file — an interrupted run can never
+# leave the repo holding another scenario's assumptions.
+import os as _os
+
+COST_DEGRADATION = float(_os.environ.get("VPP_COST_DEGRADATION", 4.00))
+                          # per MWh DISCHARGED — battery life consumed by cycling
+COST_FEE         = float(_os.environ.get("VPP_COST_FEE", 0.15))
+                          # per MWh traded, both directions — exchange + clearing
+COST_IMPACT      = float(_os.environ.get("VPP_COST_IMPACT", 0.75))
+                          # per MWh traded, both directions — own-bid price impact
                           # (a ~145 MW book is a non-trivial share of a GB DA
                           #  half-hour, so it moves the price against itself)
 
