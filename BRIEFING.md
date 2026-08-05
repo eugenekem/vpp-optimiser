@@ -1,7 +1,8 @@
 # VPP Optimiser — Project Briefing
 **Version:** 20.0
 **Status:** Phase 1 replay and Phase 2 shadow trading built. DA price forecasting uses Elexon's **day-ahead wind/solar forecast**: +18.0% accuracy skill vs naive, and — the number that matters — **87.1% capture of perfect-foresight P&L vs 81.5% for the best history-only method**, over 681 days, robustness-checked and not outlier-driven (section 10c). Demand forecast now included (+24.5% accuracy skill). **Accuracy gains are converting to profit at a sharply diminishing rate — see 10c; further forecast work is near exhausted as a strategy.** Forecasts still NOT wired into dispatch.
-**Reading this for anything external:** use section 10c, quoted as a *capture ratio*, with its caveats. **Section 10's £1.9M / £63k-per-day figures are perfect-foresight and must never be presented as trading results.**
+**Execution costs are now modelled (v20, section 10d): P&L falls 8.3% to £26,807/day and 86.2% capture — and the forecast's edge over simpler methods *widens*, because costs punish wrong trades harder than right ones.**
+**Reading this for anything external:** use **section 10d** (cost-aware) — it supersedes 10c's costless figures. Always quote **£/day alongside the capture ratio**, never the ratio alone: capture is a share of a moving ceiling and can rise while profit falls. **Section 10's £1.9M / £63k-per-day figures are perfect-foresight and must never be presented as trading results.**
 
 ---
 
