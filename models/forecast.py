@@ -28,7 +28,7 @@ from datetime import datetime, timedelta
 
 DATA_DIR = "../data"
 ACCURACY_LOG = f"{DATA_DIR}/forecast_accuracy.csv"
-METHODS = ["naive", "mean_7", "mean_90", "weekday", "regression"]
+METHODS = ["naive", "mean_7", "mean_90", "weekday", "regression", "reg_demand"]
 WINDOW = 7
 REG_WINDOW = 90   # days of history for the regression fit (needs more than a mean does)
 REG_MIN_DAYS = 30  # below this, don't attempt a fit
@@ -96,6 +96,41 @@ def load_features(date):
     })
 
 
+def load_demand(date):
+    """
+    Day-ahead national demand forecast for a date, aligned to the price file.
+
+    NOT leakage: taken from the publication at noon the day before delivery,
+    i.e. before day-ahead gate closure.
+
+    ALIGNMENT: demand rows carry their own settlementDate, while the price and
+    wind/solar files use a UTC-calendar-day window (so during BST they hold
+    SP1-2 of the *next* settlement date). We therefore join on the price file's
+    own (settlementDate, settlementPeriod) pairs. Joining on settlementPeriod
+    alone would be correct in GMT and two periods out in BST — a seasonal bug
+    that would pass a spot check in winter.
+
+    Returns a Series of demand in GW indexed by settlementPeriod, or None.
+    """
+    dpath = f"{DATA_DIR}/demand_{date}.csv"
+    ppath = f"{DATA_DIR}/market_index_{date}.csv"
+    if not (os.path.exists(dpath) and os.path.exists(ppath)):
+        return None
+
+    price = pd.read_csv(ppath)[["settlementDate", "settlementPeriod"]]
+    if price["settlementPeriod"].duplicated().any():
+        price = price.drop_duplicates(subset="settlementPeriod", keep="first")
+
+    dem = pd.read_csv(dpath)[["settlementDate", "settlementPeriod", "nationalDemand"]]
+    merged = price.merge(dem, on=["settlementDate", "settlementPeriod"], how="left")
+
+    if merged["nationalDemand"].isna().any():
+        return None  # incomplete coverage — drop the day rather than guess
+
+    out = merged.set_index("settlementPeriod")["nationalDemand"].sort_index()
+    return out / 1000.0  # GW
+
+
 def is_weekend(date):
     return datetime.strptime(date, "%Y-%m-%d").weekday() >= 5
 
@@ -126,8 +161,9 @@ def forecast_prices(target_date, method="mean_7", history=None):
         - datetime.strptime(latest, "%Y-%m-%d")
     ).days
 
-    if method == "regression":
-        return _forecast_regression(target_date, prior, info)
+    if method in ("regression", "reg_demand"):
+        return _forecast_regression(target_date, prior, info,
+                                    use_demand=(method == "reg_demand"))
 
     if method == "naive":
         train_dates = prior[-1:]
@@ -159,20 +195,51 @@ def forecast_prices(target_date, method="mean_7", history=None):
     return forecast, info
 
 
-def _forecast_regression(target_date, prior, info):
+def _build_features(date, use_demand):
     """
-    Fit price against the day-ahead wind and solar forecast, one small
-    least-squares fit per settlement period.
+    Assemble the predictor matrix inputs for one date.
+
+    Returns a DataFrame indexed by settlementPeriod, or None if any required
+    feed is missing — a day is used only if every feature is available, so the
+    fit never silently changes shape between days.
+    """
+    feat = load_features(date)
+    if feat is None:
+        return None
+    if not use_demand:
+        return feat
+
+    dem = load_demand(date)
+    if dem is None:
+        return None
+
+    common = feat.index.intersection(dem.index)
+    if common.empty:
+        return None
+    out = feat.loc[common].copy()
+    out["demand_gw"] = dem.loc[common]
+    return out
+
+
+def _forecast_regression(target_date, prior, info, use_demand=False):
+    """
+    Fit price against day-ahead forecast inputs, one small least-squares fit
+    per settlement period.
 
     Per-period rather than one global fit because wind moves a 03:00 price very
     differently from an 18:00 price — the whole point is capturing shape.
 
+    use_demand adds the day-ahead national demand forecast alongside wind and
+    solar, i.e. the demand side of the price equation rather than supply alone.
+
     Falls back to the mean of the training window for any period that cannot be
     fitted, so a thin period never produces a wild extrapolation.
     """
-    target_feat = load_features(target_date)
+    target_feat = _build_features(target_date, use_demand)
     if target_feat is None:
         return None, info  # no forecast inputs for the target day — cannot run
+
+    cols = list(target_feat.columns)
 
     train_dates = [d for d in prior[-REG_WINDOW:]
                    if os.path.exists(f"{DATA_DIR}/wind_solar_{d}.csv")]
@@ -183,13 +250,13 @@ def _forecast_regression(target_date, prior, info):
     prices, feats = {}, {}
     for d in train_dates:
         a = load_actual(d)
-        f = load_features(d)
+        f = _build_features(d, use_demand)
         if a is None or f is None:
             continue
         common = a.index.intersection(f.index)
         for p in common:
             prices.setdefault(p, []).append(a.loc[p])
-            feats.setdefault(p, []).append([1.0, f.loc[p, "wind_gw"], f.loc[p, "solar_gw"]])
+            feats.setdefault(p, []).append([1.0] + [f.loc[p, c] for c in cols])
 
     if not prices:
         return None, info
@@ -213,9 +280,7 @@ def _forecast_regression(target_date, prior, info):
             predictions[p] = float(y.mean())
             continue
 
-        x_new = np.array([1.0,
-                          target_feat.loc[p, "wind_gw"],
-                          target_feat.loc[p, "solar_gw"]])
+        x_new = np.array([1.0] + [target_feat.loc[p, c] for c in cols])
         pred = float(x_new @ coef)
 
         # Guard against extrapolation blow-ups: keep the prediction inside the

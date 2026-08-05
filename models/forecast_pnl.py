@@ -41,7 +41,7 @@ import forecast as F
 
 DATA_DIR = "../data"
 OUT_PATH = f"{DATA_DIR}/forecast_pnl.csv"
-ARMS = ["perfect", "naive", "mean_7", "regression"]
+ARMS = ["perfect", "naive", "mean_7", "regression", "reg_demand"]
 
 
 def settle(schedule, actual_prices):
