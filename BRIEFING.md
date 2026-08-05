@@ -1,6 +1,6 @@
 # VPP Optimiser — Project Briefing
-**Version:** 18.0
-**Status:** Phase 1 replay and Phase 2 shadow trading built. DA price forecasting uses Elexon's **day-ahead wind/solar forecast**: +18.0% accuracy skill vs naive, and — the number that matters — **85.9% capture of perfect-foresight P&L vs 81.5% for the best history-only method**, over 696 days, robustness-checked and not outlier-driven (section 10c). Demand forecast feed built and backfilling; not yet in the model. Forecasts still NOT wired into dispatch.
+**Version:** 19.0
+**Status:** Phase 1 replay and Phase 2 shadow trading built. DA price forecasting uses Elexon's **day-ahead wind/solar forecast**: +18.0% accuracy skill vs naive, and — the number that matters — **87.1% capture of perfect-foresight P&L vs 81.5% for the best history-only method**, over 681 days, robustness-checked and not outlier-driven (section 10c). Demand forecast now included (+24.5% accuracy skill). **Accuracy gains are converting to profit at a sharply diminishing rate — see 10c; further forecast work is near exhausted as a strategy.** Forecasts still NOT wired into dispatch.
 **Reading this for anything external:** use section 10c, quoted as a *capture ratio*, with its caveats. **Section 10's £1.9M / £63k-per-day figures are perfect-foresight and must never be presented as trading results.**
 
 ---
@@ -213,11 +213,12 @@ Walk-forward validated — each day predicted using only prior days. Leakage gua
 
 | Method | Days | MAE | RMSE | Cheap-4 hits | Peak-4 hits | Skill vs naive |
 |---|---|---|---|---|---|---|
-| naive | 696 | £22.76 | £28.92 | 0.9 / 4 | 1.7 / 4 | — |
-| mean_7 | 696 | £21.28 | £26.07 | 1.1 / 4 | 2.2 / 4 | +6.5% |
-| mean_90 *(control)* | 696 | £22.74 | £27.25 | 1.1 / 4 | 1.8 / 4 | +0.1% |
-| weekday | 696 | £21.46 | £26.18 | 1.1 / 4 | 2.2 / 4 | +5.7% |
-| **regression** | 696 | **£18.67** | **£22.78** | **1.3 / 4** | **2.2 / 4** | **+18.0%** |
+| naive | 681 | £22.82 | £29.01 | 0.9 / 4 | 1.7 / 4 | — |
+| mean_7 | 681 | £21.26 | £26.08 | 1.1 / 4 | 2.2 / 4 | +6.8% |
+| mean_90 *(control)* | 681 | £22.78 | £27.32 | 1.1 / 4 | 1.8 / 4 | +0.2% |
+| weekday | 681 | £21.46 | £26.19 | 1.1 / 4 | 2.2 / 4 | +6.0% |
+| regression *(wind+solar)* | 681 | £18.73 | £22.88 | 1.3 / 4 | 2.2 / 4 | +17.9% |
+| **reg_demand** *(+demand)* | 681 | **£17.23** | **£21.14** | **1.4 / 4** | **2.2 / 4** | **+24.5%** |
 
 All methods are compared on **identical days** — `regression` covers fewer days (no wind/solar published for 4 dates, plus its 90-day warm-up), and averaging each method over whatever days it happened to cover would not be like-for-like.
 
@@ -241,14 +242,26 @@ MAE cannot answer whether a forecast is worth trading on. This test does, in pou
 
 | Arm | Total P&L | Per day | Capture |
 |---|---|---|---|
-| `perfect` *(not tradeable)* | £23,317,960 | £33,503 | 100.0% |
-| naive | £16,838,330 | £24,193 | 72.2% |
-| mean_7 | £19,001,647 | £27,301 | 81.5% |
-| **regression** | **£20,019,765** | **£28,764** | **85.9%** |
+| `perfect` *(not tradeable)* | £22,860,519 | £33,569 | 100.0% |
+| naive | £16,488,388 | £24,212 | 72.1% |
+| mean_7 | £18,625,963 | £27,351 | 81.5% |
+| regression *(wind+solar)* | £19,636,441 | £28,835 | 85.9% |
+| **reg_demand** *(+demand)* | **£19,904,993** | **£29,229** | **87.1%** |
 
-**Headline: the wind/solar forecast captures 85.9% of perfect-foresight profit**, versus 81.5% for the best history-only method and 72.2% for copying yesterday — worth **£1.02M more than `mean_7`** across 696 days.
+**Headline: the best forecast captures 87.1% of perfect-foresight profit**, versus 81.5% for the best history-only method and 72.2% for copying yesterday — worth **£1.02M more than `mean_7`** across 696 days.
 
-**Accuracy converts to money, but at a discount.** The +18.0% MAE improvement produced +5.4% more P&L — roughly a third of the accuracy gain reached the bottom line. This is consistent with the section 10b finding that period *selection* barely improved: the optimiser only needs the price *ranking* to be right, so better level accuracy is partly wasted on it. Anyone reasoning from MAE alone would have overstated the commercial value by ~3×.
+**⚠️ Accuracy converts to money at a sharply diminishing rate — the most important strategic finding so far.**
+
+| Step | Accuracy gain (skill) | P&L gain (capture) | Conversion |
+|---|---|---|---|
+| `mean_7` → `regression` (add wind/solar) | +11.1 pts (6.8 → 17.9%) | +4.4 pts (81.5 → 85.9%) | ~40% |
+| `regression` → `reg_demand` (add demand) | +6.6 pts (17.9 → 24.5%) | +1.2 pts (85.9 → 87.1%) | ~18% |
+
+Each increment of forecast accuracy buys **less** profit than the one before. Demand is a real improvement — +1.37% P&L, £268,552 over 681 days, paired t = 3.57, winning on 55.9% of days with the top 5 days contributing only 8.3% of the gain, so it is broad-based and not noise — but it is a *small* one for a whole new data pipeline.
+
+**Implication: chasing further forecast accuracy is close to exhausted as a strategy.** The remaining ~13 points to perfect foresight are unlikely to be recovered by better price prediction — much of it is probably irreducible uncertainty. Future effort is better spent on (a) the markets not yet optimised against forecasts (BM, ancillary/DC), (b) stochastic optimisation that hedges across a *distribution* of prices rather than trusting one path, or (c) execution realism (spreads, costs, market impact), which currently sits outside the model entirely and will lower every number here.
+
+**Historical note on the earlier framing.** The +18.0% MAE improvement produced +5.4% more P&L — roughly a third of the accuracy gain reached the bottom line. This is consistent with the section 10b finding that period *selection* barely improved: the optimiser only needs the price *ranking* to be right, so better level accuracy is partly wasted on it. Anyone reasoning from MAE alone would have overstated the commercial value by ~3×.
 
 **Robustness — checked, and it holds:**
 - Beats `mean_7` on **406 of 696 days (58.3%)** — a real but not overwhelming edge.
@@ -305,7 +318,8 @@ MAE cannot answer whether a forecast is worth trading on. This test does, in pou
 | Add wind/solar day-ahead forecast feed (fetch_wind_solar.py, 726 days) | ✅ Done |
 | Regression price model on wind/solar (+18.0% skill, control-verified) | ✅ Done |
 | Test whether forecast accuracy converts into P&L (forecast_pnl.py) | ✅ Done — 85.9% capture |
-| Add demand forecast as a feature (fetch_demand.py built, backfilling) | 🔄 In progress |
+| Add demand forecast as a feature (reg_demand) | ✅ Done — +1.2 pts capture |
+| Stochastic optimisation / execution realism — better return than more forecasting | ⬜ Next |
 
 | Fix clock-change crash in dispatcher.py (replay/shadow break on 2 dates) | ⬜ To do |
 | Wire forecast into dispatch (blocked on accuracy) | ⬜ To do |
@@ -380,3 +394,5 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 - **⚠️ Feature/price alignment is deliberate — do not "fix" `fetch_wind_solar.py` in isolation.** It mirrors `fetch_da_prices.py`'s UTC-calendar-day window on `startTime` rather than filtering to its own settlement date. This is intentional: it makes `wind_solar_{D}.csv` line up row-for-row with `market_index_{D}.csv`, so the same `settlementPeriod` means the same real half-hour in both. Filtering wind/solar to settlement date D while prices remain on the UTC-window convention would put features and target 24 hours apart for SP1–2. If the settlement-date misalignment is ever fixed, **both feeds must be fixed together**.
 - **v18 — forecast accuracy converts to money, but at roughly a third of the rate MAE implies.** `forecast_pnl.py` settles forecast-built dispatch at actual prices. The regression's +18.0% MAE advantage produced only **+5.4% P&L** over `mean_7`. Consistent with section 10b: the LP only needs the price *ranking*, so improvements in level accuracy are largely wasted on it. **Lesson: never quote a forecast-accuracy improvement as if it were a commercial one** — reasoning from MAE alone would have overstated the value ~3×. Robustness checked before believing the result: wins 58.3% of days, top-5 days only 15.0% of the advantage, and the edge is right-skewed (mean £1,463 vs median £516) because it comes from days when renewables swing and price history is blind. That is a mechanism, not an artefact.
 - **`fetch_demand.py` uses a different alignment convention on purpose.** Prices and wind/solar use a UTC-calendar-day window on `startTime`; demand rows are stored with their own `settlementDate`. Joining demand to prices must therefore key on **(settlementDate, settlementPeriod)**, not settlementPeriod alone, or the two will sit two periods apart during BST and be correct during GMT — a seasonal bug that would pass a spot check in winter. Integration deliberately deferred rather than rushed unattended.
+- **v19 — demand forecast added; diminishing returns now the headline.** `reg_demand` (wind + solar + day-ahead national demand) reaches +24.5% accuracy skill and **87.1% P&L capture**. The gain over wind/solar alone is real and statistically solid (+1.37% P&L, £268,552 over 681 days, paired t = 3.57, top-5 days only 8.3% of the gain) but small. Conversion of accuracy into money fell from ~40% to ~18% between the two feature additions. **Treat further forecast-accuracy work as low-yield**; the remaining gap to perfect foresight is probably mostly irreducible. Note also that every P&L figure here still excludes spreads, transaction costs, market impact and degradation — closing that gap would change the numbers more than another feature would.
+- **Process failure worth remembering: a `pgrep -f "<pattern>"` wait loop matched its own command line.** A backgrounded `until ! pgrep -f "backfill.py"; do sleep 30; done` never exited, because the shell running it had `backfill.py` in its own command string. The backfill had finished normally; only the watcher hung, and it burned ~9 hours before anyone noticed. Use the bracket trick (`pgrep -f "[b]ackfill.py"`) or match on the interpreter, and **verify a watcher actually exits** rather than assuming it will.
