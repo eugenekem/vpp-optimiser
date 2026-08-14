@@ -1,7 +1,7 @@
 # VPP Optimiser — Project Briefing
-**Version:** 20.0
+**Version:** 21.0
 **Status:** Phase 1 replay and Phase 2 shadow trading built. DA price forecasting uses Elexon's **day-ahead wind/solar forecast**: +18.0% accuracy skill vs naive, and — the number that matters — **87.1% capture of perfect-foresight P&L vs 81.5% for the best history-only method**, over 681 days, robustness-checked and not outlier-driven (section 10c). Demand forecast now included (+24.5% accuracy skill). **Accuracy gains are converting to profit at a sharply diminishing rate — see 10c; further forecast work is near exhausted as a strategy.** Forecasts still NOT wired into dispatch.
-**Execution costs are now modelled (v20, section 10d): P&L falls 8.3% to £26,807/day and 86.2% capture — and the forecast's edge over simpler methods *widens*, because costs punish wrong trades harder than right ones.**
+**Execution costs modelled and stress-tested (v20-21, section 10d): £24,702/day under conservative assumptions, £26,807 central — and the forecast's edge over simpler methods *grows* as costs rise (+7.3% → +8.9%), because costs punish wrong trades harder than right ones.**
 **Reading this for anything external:** use **section 10d** (cost-aware) — it supersedes 10c's costless figures. Always quote **£/day alongside the capture ratio**, never the ratio alone: capture is a share of a moving ceiling and can rise while profit falls. **Section 10's £1.9M / £63k-per-day figures are perfect-foresight and must never be presented as trading results.**
 
 ---
@@ -300,7 +300,23 @@ Each increment of forecast accuracy buys **less** profit than the one before. De
 
 **Never quote capture without the pounds.** Capture is a share of a moving ceiling: if costs or market conditions drag the ceiling down faster than your P&L, capture can *rise* while you earn *less*. (An earlier read of the 19-day test appeared to show exactly that, but was an artefact of comparing a 19-day sample against a 681-day one — a mistake worth not repeating.) Quote £/day alongside the ratio.
 
-**Still excluded:** imbalance exposure if delivery deviates from contract, availability/outages, non-linear market impact at larger volumes, and any ID/BM execution cost (this is the DA layer only). The realistic number remains below £26,807/day.
+### Cost sensitivity — how much does the assumption matter?
+
+**Script:** `models/cost_sensitivity.py` **Output:** `data/cost_sensitivity.csv`
+
+The central stack was a judgement call, so the whole test was re-run across a plausible range. `reg_demand`, 681 days:
+
+| Stack | Degradation | Total P&L | Per day | Capture |
+|---|---|---|---|---|
+| light | £2.00/MWh | £19,104,677 | £28,054 | 86.7% |
+| **central** | £4.00/MWh | £18,255,788 | **£26,807** | 86.2% |
+| **conservative** | £8.00/MWh | £16,822,000 | **£24,702** | 85.3% |
+
+**Result 1 — the conclusion is robust to the cost assumption.** Quadrupling degradation from £2 to £8/MWh moves daily P&L by only **14%** (£28,054 → £24,702), and capture by 1.4 points. The strategy does not depend on a favourable cost assumption, because it earns from wide daily spreads rather than thin margins. **Quote the conservative figure — ~£24,700/day — externally.** If the case holds at £8/MWh degradation it will survive challenge.
+
+**Result 2 — the forecast edge *grows monotonically* as costs rise.** Advantage of `reg_demand` over `mean_7`: **+7.28%** (light) → **+7.86%** (central) → **+8.91%** (conservative). This confirms across the full range what the single-stack run suggested: costs punish wrong trades harder than right ones, so **forecast quality matters most precisely when trading is most expensive**. Commercially this is the strongest argument in the project — the edge is not an artefact of assuming cheap trading, and it widens under pessimistic assumptions.
+
+**Still excluded:** imbalance exposure if delivery deviates from contract, availability/outages, non-linear market impact at larger volumes, and any ID/BM execution cost (this is the DA layer only). The realistic number remains below the figures above.
 
 ---
 
@@ -353,6 +369,7 @@ Each increment of forecast accuracy buys **less** profit than the one before. De
 | Test whether forecast accuracy converts into P&L (forecast_pnl.py) | ✅ Done — 85.9% capture |
 | Add demand forecast as a feature (reg_demand) | ✅ Done — +1.2 pts capture |
 | Execution costs modelled (config.py + cost-aware LP) | ✅ Done — 86.2% capture, £26.8k/day |
+| Cost sensitivity sweep (light / central / conservative) | ✅ Done — £24.7k–£28.1k/day |
 | Stochastic optimisation — hedge across a price distribution | ⬜ Next |
 
 | Fix clock-change crash in dispatcher.py (replay/shadow break on 2 dates) | ⬜ To do |
@@ -431,3 +448,5 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 - **v19 — demand forecast added; diminishing returns now the headline.** `reg_demand` (wind + solar + day-ahead national demand) reaches +24.5% accuracy skill and **87.1% P&L capture**. The gain over wind/solar alone is real and statistically solid (+1.37% P&L, £268,552 over 681 days, paired t = 3.57, top-5 days only 8.3% of the gain) but small. Conversion of accuracy into money fell from ~40% to ~18% between the two feature additions. **Treat further forecast-accuracy work as low-yield**; the remaining gap to perfect foresight is probably mostly irreducible. Note also that every P&L figure here still excludes spreads, transaction costs, market impact and degradation — closing that gap would change the numbers more than another feature would.
 - **Process failure worth remembering: a `pgrep -f "<pattern>"` wait loop matched its own command line.** A backgrounded `until ! pgrep -f "backfill.py"; do sleep 30; done` never exited, because the shell running it had `backfill.py` in its own command string. The backfill had finished normally; only the watcher hung, and it burned ~9 hours before anyone noticed. Use the bracket trick (`pgrep -f "[b]ackfill.py"`) or match on the interpreter, and **verify a watcher actually exits** rather than assuming it will.
 - **v20 — execution costs modelled; ~8% of P&L, and good forecasting matters MORE once costs are real.** Degradation/fees/impact are now in `config.py`, applied both at settlement and (optionally) inside the LP objective. `optimise_battery_lp` gained `cost_discharge`/`cost_charge`, **defaulting to 0.0 so replay.py and shadow.py results are unchanged** unless costs are passed explicitly. Headline: `reg_demand` £29,229 → **£26,807/day (−8.3%)**; cost-awareness worth +1.2%; and the forecast's edge over `mean_7` *widens* from +6.87% to +7.86%, because costs punish wrong trades harder than right ones. **Capture is a ratio to a moving ceiling — always quote £/day beside it**; an earlier claim that capture rose under costs was wrong, caused by comparing a 19-day sample with a 681-day one.
+- **v21 — cost sensitivity: the result does not rest on a favourable assumption.** Quadrupling degradation (£2 → £8/MWh) moves daily P&L only 14% (£28,054 → £24,702) and capture 1.4 points. **Use ~£24,700/day (conservative) for anything external.** The forecast's edge over `mean_7` rises monotonically with cost — +7.28% / +7.86% / +8.91% across light / central / conservative — confirming that forecast quality matters *most* when trading is most expensive. That the edge widens under pessimistic assumptions is the strongest commercial argument the project has so far.
+- **Operational lesson: do not put job logs or sentinels in `/tmp`.** The overnight sweep completed correctly and wrote `data/cost_sensitivity.csv`, but macOS had purged `/tmp/sensitivity.log` and `/tmp/sens_done` by morning, so the first check suggested the job had died. Results survived only because the real output went to `data/`. Write logs and completion markers inside the repo (gitignored) so a run can always be diagnosed after the fact.
