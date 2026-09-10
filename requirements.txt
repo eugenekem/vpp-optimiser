@@ -1,0 +1,11 @@
+# Core pipeline — needed by scripts/, models/, and the daily cloud pipeline
+pandas
+numpy
+requests
+pulp
+
+# Sense-check exploration stage (scripts/exploration_helpers.py)
+matplotlib
+
+# Dashboard only (dashboard.py) — not needed by the automated daily pipeline
+streamlit

@@ -26,7 +26,11 @@ vpp-optimiser/
 │   ├── optimiser_da.py      # Forward-looking DA optimiser with reservation rules
 │   ├── pnl.py               # P&L calculator per asset and portfolio
 │   └── risk.py              # VaR, Sharpe, scenario analysis, concentration risk
-└── data/                    # Generated CSV outputs (gitignored)
+└── data/                    # Generated CSV outputs. No longer gitignored (v22)
+                             #   — tracking the existing ~3,000 files is a
+                             #   separate, pending commit (needed so the daily
+                             #   cloud pipeline has history on a fresh
+                             #   checkout); data/raw/ remains ignored
 ```
 
 ---
