@@ -372,7 +372,7 @@ The central stack was a judgement call, so the whole test was re-run across a pl
 | Cost sensitivity sweep (light / central / conservative) | ✅ Done — £24.7k–£28.1k/day |
 | Unattended daily pipeline (daily_pipeline.py) — fetch, backfill, shadow-log | ✅ Done — see §18 |
 | Cloud scheduling of the daily pipeline | ✅ Done (v23) — live, daily 05:00 UTC |
-| Sense-check exploration stage (exploration_helpers.py) — built, unused | ⬜ Next |
+| Sense-check exploration stage (exploration_helpers.py) — tested, real finding | ✅ Done (v23) — not yet chained into daily schedule |
 | Fix clock-change crash in dispatcher.py (replay/shadow break on 2 dates) | ✅ Done (v22) |
 | Wire forecast into dispatch (blocked on accuracy) | ⬜ To do |
 | Stochastic optimisation — hedge across a price distribution | ⬜ To do |
@@ -461,6 +461,8 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
   3. **Dependencies were never installed** — `pandas` etc. genuinely absent from the sandbox's Python. Not a real gap (`requirements.txt` exists specifically for this) — just missing from the test prompt itself. Fixed by adding `pip install -r requirements.txt` as an explicit step in the routine's prompt.
   4. **Test run 4 passed completely** — sync, dependency install, gap detection all correct. One honest caveat: because all feeds were already current (from same-day manual work), this run's gap-detection correctly no-op'd rather than exercising a real fetch→shadow-log→commit→push cycle end-to-end in the cloud. That exact path was proven for real earlier the same day on the local Mac (the 40-day backfill that produced commit `c26a4d3`), using identical code — so the first genuinely new day the cloud schedule fires (2026-09-14) is the true first full-path proof, not a fresh unknown.
   **Lesson worth generalising**: don't assume "the identity check was the problem" fixes everything just because it was the first error — three of these were each independently sufficient to block the pipeline, and each was found only by actually re-running the real thing after the previous fix, not by reasoning about what "should" now work.
+
+- **Exploration agent test-drive: `classify_day()` mislabels the single best day in 90 days of shadow history.** Ran `exploration_helpers.py` for real against `shadow_pnl.csv` (chart + note in `data/explorations/2026-09-13/`). Found: 23 Jun 2026 (£305,190 net P&L, the best day of all 90) is labeled "amber," not "green," because `classify_day()` requires a negative minimum price for "green" regardless of range — that day had a £475/MWh range (£85–£561) but never went negative. Not a P&L bug (money is computed correctly regardless of label) but a real labeling gap: if `day_type` is ever used as a filter or model feature, this day would be invisible despite being the most profitable on record. Low priority, logged for later. Proves the exploration toolkit works as designed on a first real run — not yet chained into the daily schedule.
 
 ---
 
