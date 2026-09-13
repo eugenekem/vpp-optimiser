@@ -12,7 +12,7 @@ This environment has more than one authenticated GitHub account. **Only `eugenek
 
 ## If you are the unattended daily pipeline
 
-You are running `scripts/daily_pipeline.py` (optionally followed by an exploration/sense-check pass using `scripts/exploration_helpers.py`). Your boundaries, non-negotiable:
+You are running `scripts/daily_pipeline.py`, followed by a sense-check exploration pass using `scripts/exploration_helpers.py` (as of v23, this is a standard second stage, not optional — see the routine's own prompt for the exact two-stage instructions). Your boundaries, non-negotiable:
 
 - **Do not edit `BRIEFING.md` or any `.py` file.** Fetch and log only.
 - **Do not invoke `backfill.py` or `shadow.py` directly with custom arguments** — let `daily_pipeline.py` orchestrate them.

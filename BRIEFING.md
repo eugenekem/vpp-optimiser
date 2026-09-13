@@ -372,7 +372,7 @@ The central stack was a judgement call, so the whole test was re-run across a pl
 | Cost sensitivity sweep (light / central / conservative) | ✅ Done — £24.7k–£28.1k/day |
 | Unattended daily pipeline (daily_pipeline.py) — fetch, backfill, shadow-log | ✅ Done — see §18 |
 | Cloud scheduling of the daily pipeline | ✅ Done (v23) — live, daily 05:00 UTC |
-| Sense-check exploration stage (exploration_helpers.py) — tested, real finding | ✅ Done (v23) — not yet chained into daily schedule |
+| Sense-check exploration stage (exploration_helpers.py) — tested, real finding | ✅ Done (v23) — chained into daily schedule as standard Stage 2 |
 | Fix clock-change crash in dispatcher.py (replay/shadow break on 2 dates) | ✅ Done (v22) |
 | Wire forecast into dispatch (blocked on accuracy) | ⬜ To do |
 | Stochastic optimisation — hedge across a price distribution | ⬜ To do |
