@@ -20,9 +20,19 @@ if len(sys.argv) > 1:
 else:
     target_date = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
 
+# Fixed (v24): previously queried an exact UTC calendar-day window and then
+# force-labelled every row with the query date, discarding Elexon's own
+# settlementDate — this was the actual bug (not an API limitation), matching
+# the same UTC-window issue in fetch_da_prices.py. Now widened the same way
+# and filtered to Elexon's own settlementDate == target_date, so this file's
+# settlement period N is genuinely target_date's period N, and it still lines
+# up row-for-row with the now-also-fixed market_index_{date}.csv.
+window_start = (datetime.strptime(target_date, "%Y-%m-%d") - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+window_end = (datetime.strptime(target_date, "%Y-%m-%d") + timedelta(days=1, hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 url = (
     "https://data.elexon.co.uk/bmrs/api/v1/forecast/generation/wind-and-solar/day-ahead"
-    f"?from={target_date}T00:00Z&to={target_date}T23:30Z"
+    f"?from={window_start}&to={window_end}"
     "&processType=day%20ahead&format=json"
 )
 
@@ -35,16 +45,11 @@ if not rows:
     sys.exit(1)
 
 df = pd.DataFrame(rows)
+df = df[df["settlementDate"] == target_date].copy()
 
-# NOTE ON ALIGNMENT — deliberate, do not "fix" in isolation.
-# Like fetch_da_prices.py, this queries a UTC calendar-day window on startTime.
-# During BST that window holds SP3-48 of `target_date` plus SP1-2 of the next
-# settlement date (a GB settlement day starts 23:00 UTC the evening before).
-# We keep that convention ON PURPOSE so this file lines up row-for-row with
-# market_index_{date}.csv: the same settlementPeriod in both files refers to
-# the same real half-hour. Filtering to settlementDate == target_date here
-# would silently put features and prices 24h out of step for SP1-2.
-# The underlying misalignment is a known issue affecting both feeds equally.
+if df.empty:
+    print(f"No rows with settlementDate == {target_date} in the response")
+    sys.exit(1)
 
 # One row per settlement period, one column per generation type.
 wide = (

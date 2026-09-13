@@ -12,12 +12,20 @@ if len(sys.argv) > 1:
 else:
     target_date = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-from_time = f"{target_date}T00:00:00Z"
-to_time   = f"{target_date}T23:59:59Z"
+# Fixed (v24): a GB settlement day can start as early as 23:00 UTC the day
+# before (BST), so a window of exactly [D 00:00, D 23:59:59] UTC missed
+# target_date's own first periods (they live in the day-before's window) while
+# picking up the NEXT day's first periods instead. We now widen the window on
+# both sides and then filter to rows Elexon itself dates as target_date -
+# using Elexon's own authoritative settlementDate rather than computing
+# BST/GMT boundaries ourselves, so this is correct in both seasons and on the
+# two annual clock-change days without special-casing them here.
+window_start = (datetime.strptime(target_date, "%Y-%m-%d") - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+window_end = (datetime.strptime(target_date, "%Y-%m-%d") + timedelta(days=1, hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 url = (
     f"https://data.elexon.co.uk/bmrs/api/v1/balancing/pricing/market-index"
-    f"?from={from_time}&to={to_time}&format=json"
+    f"?from={window_start}&to={window_end}&format=json"
 )
 
 response = requests.get(url)
@@ -25,6 +33,7 @@ data = response.json()
 
 df = pd.DataFrame(data["data"])
 df = df[df["dataProvider"] == "APXMIDP"].copy()
+df = df[df["settlementDate"] == target_date].copy()
 df = df.sort_values("settlementPeriod").reset_index(drop=True)
 
 print(f"Fetched {len(df)} settlement periods for {target_date}")
