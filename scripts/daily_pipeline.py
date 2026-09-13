@@ -41,6 +41,7 @@ DATA_DIR = REPO_ROOT / "data"
 CORE_FEEDS = ["market_index", "system_prices", "wind_solar", "demand"]
 MAX_BACKFILL_DAYS = 90  # safety cap per run; a larger real gap just takes a few runs to close
 GIT_IDENTITY = "eugenekem"  # the only account allowed to push this repo — see BRIEFING.md known issues
+MAIN_BRANCH = "main"
 
 
 def run(cmd, cwd=None, check=True):
@@ -101,6 +102,26 @@ def check_git_identity():
 def git_sync_or_abort():
     print("Syncing repo...")
     run(["git", "fetch"], cwd=REPO_ROOT)
+
+    # A fresh cloud checkout starts in detached HEAD (no current branch) -
+    # different from a local machine, which is always on a branch. From
+    # detached HEAD, `git pull --ff-only` fails immediately with "You are
+    # not currently on a branch", which this function used to misreport as
+    # "repo has diverged" even when origin hadn't diverged at all. Found via
+    # a real cloud test run, not assumed. Checking out the branch explicitly
+    # first (safe: it's the branch this whole pipeline works on) makes both
+    # environments behave identically from here on.
+    branch_check = run(["git", "symbolic-ref", "-q", "--short", "HEAD"],
+                       cwd=REPO_ROOT, check=False)
+    if branch_check.returncode != 0:
+        print(f"  Detached HEAD detected — checking out {MAIN_BRANCH}...")
+        checkout = run(["git", "checkout", MAIN_BRANCH], cwd=REPO_ROOT, check=False)
+        if checkout.returncode != 0:
+            raise RuntimeError(
+                f"Could not check out '{MAIN_BRANCH}' from detached HEAD.\n"
+                f"{checkout.stderr.strip()}"
+            )
+
     result = run(["git", "pull", "--ff-only"], cwd=REPO_ROOT, check=False)
     if result.returncode != 0:
         raise RuntimeError(
