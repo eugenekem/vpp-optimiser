@@ -60,8 +60,24 @@ def check_git_identity():
     authenticated GitHub identities in the same environment before, and only
     one (eugenekem) has write access — the other fails with a 403 that's easy
     to miss in an unattended run.
+
+    Only meaningful where `gh` CLI multi-account login is how auth works (the
+    maintainer's local Mac). A cloud sandbox has no `gh` binary at all and
+    authenticates via an injected token/proxy instead (GIT_ASKPASS +
+    GITHUB_TOKEN) — there's no multi-account ambiguity to catch there, since
+    that auth is scoped to this environment's own connected GitHub account by
+    construction. Verified via a real one-off cloud test run (2026-09-13):
+    `gh` absent, but `git ls-remote origin` succeeded and push auth was
+    correctly configured through the proxy. Confirmed by running the actual
+    test, not assumed.
     """
-    result = run(["gh", "auth", "status"], check=False)
+    try:
+        result = run(["gh", "auth", "status"], check=False)
+    except FileNotFoundError:
+        print("ℹ️  'gh' not installed in this environment — skipping the "
+              "multi-account identity check (not applicable here; auth is "
+              "handled by this environment's own git credentials instead).")
+        return
     output = result.stdout + result.stderr
 
     active_line = None
