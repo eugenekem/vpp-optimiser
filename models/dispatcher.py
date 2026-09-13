@@ -40,7 +40,23 @@ def run_dispatcher(date):
         return None
 
     df_prices = pd.read_csv(price_file)
-    da_prices = df_prices.set_index("settlementPeriod")["price"]
+
+    # market_index_{date}.csv is fetched by UTC start-time window, so during
+    # BST it also picks up SP1-2 of the *next* settlement date. Normally
+    # harmless, but on the spring clock-change Sunday the settlement day has
+    # only 46 periods, so SP1-2 appear twice with different prices -
+    # set_index then raises a duplicate-label error downstream. Same fix as
+    # forecast.py::load_actual: keep the row belonging to this file's own
+    # settlement date. Affects 2 of 731+ days (30 Mar 2025, 29 Mar 2026);
+    # normal days are unaffected since there's nothing to deduplicate.
+    if df_prices["settlementPeriod"].duplicated().any():
+        own = df_prices[df_prices["settlementDate"] == date]
+        other = df_prices[df_prices["settlementDate"] != date]
+        df_prices = pd.concat([own, other]).drop_duplicates(
+            subset="settlementPeriod", keep="first"
+        )
+
+    da_prices = df_prices.set_index("settlementPeriod")["price"].sort_index()
     id_prices = simulate_intraday_prices(da_prices)
 
     df_bmrs = pd.read_csv(bmrs_file)
