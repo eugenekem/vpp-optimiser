@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 DATA_DIR = "../data"
 DELAY = 0.4          # seconds between requests — be polite to Elexon
 PROGRESS_EVERY = 25  # print a progress line this often
+RETRY_BACKOFF = [5, 20, 60]  # seconds — retries a transient failure before giving up on this date
 
 FEEDS = [
     ("fetch_da_prices.py",  "market_index"),
@@ -35,20 +36,33 @@ def fetch_one(script, prefix, date):
     """
     Fetch one feed for one date. Returns "skip", "ok", or "fail".
     Never overwrites an existing file.
+
+    Retries a transient failure (e.g. Elexon briefly down) with backoff before
+    giving up — previously a single hiccup meant waiting for a full separate
+    re-run. Never retries a "skip", so resumability is unaffected.
     """
     path = f"{DATA_DIR}/{prefix}_{date}.csv"
     if os.path.exists(path):
         return "skip"
 
-    result = subprocess.run(
-        ["python", script, date],
-        capture_output=True, text=True
-    )
-    time.sleep(DELAY)
+    attempts = len(RETRY_BACKOFF) + 1
+    for attempt in range(attempts):
+        result = subprocess.run(
+            ["python", script, date],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0 and os.path.exists(path):
+            time.sleep(DELAY)
+            return "ok"
 
-    if result.returncode != 0 or not os.path.exists(path):
-        return "fail"
-    return "ok"
+        if attempt < attempts - 1:
+            wait = RETRY_BACKOFF[attempt]
+            print(f"    ⚠️  {script} {date} failed (attempt {attempt+1}/{attempts}), "
+                  f"retrying in {wait}s...")
+            time.sleep(wait)
+
+    time.sleep(DELAY)
+    return "fail"
 
 
 def backfill(start_date, end_date):
