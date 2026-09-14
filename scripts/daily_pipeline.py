@@ -72,6 +72,12 @@ def check_git_identity():
     correctly configured through the proxy. Confirmed by running the actual
     test, not assumed.
     """
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print("ℹ️  Running in GitHub Actions — skipping the multi-account "
+              "identity check (not applicable here; push auth is scoped to "
+              "this repo via GITHUB_TOKEN, so there's no ambiguity to catch).")
+        return
+
     try:
         result = run(["gh", "auth", "status"], check=False)
     except FileNotFoundError:

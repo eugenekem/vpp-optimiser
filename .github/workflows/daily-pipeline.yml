@@ -1,0 +1,53 @@
+name: Daily Pipeline
+
+# Stage 1 of the daily pipeline: fetch/backfill the four core Elexon feeds,
+# shadow-log any un-logged days, commit and push data/. Runs here (not in
+# the cloud routine) because Claude Code cloud sandboxes restrict outbound
+# network access to Anthropic APIs and package registries only — they can't
+# reach data.elexon.co.uk. GitHub-hosted runners have no such restriction.
+#
+# Stage 2 (the exploration sense-check) stays in the cloud routine, which
+# runs later the same morning, checks this workflow's outcome, and alerts
+# via push notification either way.
+
+on:
+  schedule:
+    - cron: '0 5 * * *'  # 05:00 UTC daily
+  workflow_dispatch: {}  # allows manual "Run workflow" for testing
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Configure git identity for commits
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run daily pipeline
+        id: pipeline
+        run: |
+          cd scripts
+          python daily_pipeline.py
+
+      - name: Write job summary
+        if: always()
+        run: |
+          if [ "${{ steps.pipeline.outcome }}" = "success" ]; then
+            echo "### ✅ Daily pipeline succeeded" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ❌ Daily pipeline failed" >> "$GITHUB_STEP_SUMMARY"
+          fi
