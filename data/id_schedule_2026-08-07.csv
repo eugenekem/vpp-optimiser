@@ -1,6 +1,6 @@
 settlement_period,da_price,id_price,spread,asset,action,power_mw,soc,energy_mwh
-1,109.78,111.3,1.52,Battery_1,hold,0.0,10.0,2.0
-2,116.34,111.14,-5.2,Battery_1,hold,0.0,10.0,2.0
+1,132.57,134.09,1.52,Battery_1,hold,0.0,10.0,2.0
+2,126.3,121.1,-5.2,Battery_1,hold,0.0,10.0,2.0
 3,117.91,121.66,3.75,Battery_1,hold,0.0,10.0,2.0
 4,116.18,120.88,4.7,Battery_1,hold,0.0,10.0,2.0
 5,117.08,107.32,-9.76,Battery_1,charge,3.0,16.8,3.35
@@ -47,8 +47,8 @@ settlement_period,da_price,id_price,spread,asset,action,power_mw,soc,energy_mwh
 46,138.32,139.41,1.09,Battery_1,discharge,3.0,10.0,2.0
 47,107.86,112.22,4.36,Battery_1,hold,0.0,10.0,2.0
 48,110.05,111.17,1.12,Battery_1,hold,0.0,10.0,2.0
-1,109.78,111.3,1.52,Battery_2,hold,0.0,10.0,10.0
-2,116.34,111.14,-5.2,Battery_2,hold,0.0,10.0,10.0
+1,132.57,134.09,1.52,Battery_2,hold,0.0,10.0,10.0
+2,126.3,121.1,-5.2,Battery_2,hold,0.0,10.0,10.0
 3,117.91,121.66,3.75,Battery_2,hold,0.0,10.0,10.0
 4,116.18,120.88,4.7,Battery_2,hold,0.0,10.0,10.0
 5,117.08,107.32,-9.76,Battery_2,charge,5.0,12.2,12.25
@@ -95,8 +95,8 @@ settlement_period,da_price,id_price,spread,asset,action,power_mw,soc,energy_mwh
 46,138.32,139.41,1.09,Battery_2,discharge,5.0,13.2,13.19
 47,107.86,112.22,4.36,Battery_2,discharge,5.0,10.4,10.42
 48,110.05,111.17,1.12,Battery_2,discharge,0.75,10.0,10.0
-1,109.78,111.3,1.52,Battery_3,hold,0.0,10.0,20.0
-2,116.34,111.14,-5.2,Battery_3,hold,0.0,10.0,20.0
+1,132.57,134.09,1.52,Battery_3,hold,0.0,10.0,20.0
+2,126.3,121.1,-5.2,Battery_3,hold,0.0,10.0,20.0
 3,117.91,121.66,3.75,Battery_3,hold,0.0,10.0,20.0
 4,116.18,120.88,4.7,Battery_3,hold,0.0,10.0,20.0
 5,117.08,107.32,-9.76,Battery_3,charge,10.0,12.2,24.5
@@ -143,8 +143,8 @@ settlement_period,da_price,id_price,spread,asset,action,power_mw,soc,energy_mwh
 46,138.32,139.41,1.09,Battery_3,discharge,10.0,13.2,26.39
 47,107.86,112.22,4.36,Battery_3,discharge,10.0,10.4,20.83
 48,110.05,111.17,1.12,Battery_3,discharge,1.5,10.0,20.0
-1,109.78,111.3,1.52,Battery_4,hold,0.0,10.0,8.0
-2,116.34,111.14,-5.2,Battery_4,hold,0.0,10.0,8.0
+1,132.57,134.09,1.52,Battery_4,hold,0.0,10.0,8.0
+2,126.3,121.1,-5.2,Battery_4,hold,0.0,10.0,8.0
 3,117.91,121.66,3.75,Battery_4,hold,0.0,10.0,8.0
 4,116.18,120.88,4.7,Battery_4,hold,0.0,10.0,8.0
 5,117.08,107.32,-9.76,Battery_4,charge,4.0,12.3,9.8
@@ -191,8 +191,8 @@ settlement_period,da_price,id_price,spread,asset,action,power_mw,soc,energy_mwh
 46,138.32,139.41,1.09,Battery_4,discharge,4.0,13.2,10.56
 47,107.86,112.22,4.36,Battery_4,discharge,4.0,10.4,8.33
 48,110.05,111.17,1.12,Battery_4,discharge,0.6,10.0,8.0
-1,109.78,111.3,1.52,Battery_5,hold,0.0,10.0,16.0
-2,116.34,111.14,-5.2,Battery_5,hold,0.0,10.0,16.0
+1,132.57,134.09,1.52,Battery_5,hold,0.0,10.0,16.0
+2,126.3,121.1,-5.2,Battery_5,hold,0.0,10.0,16.0
 3,117.91,121.66,3.75,Battery_5,hold,0.0,10.0,16.0
 4,116.18,120.88,4.7,Battery_5,hold,0.0,10.0,16.0
 5,117.08,107.32,-9.76,Battery_5,charge,8.0,12.3,19.6

@@ -1,6 +1,6 @@
 settlement_period,price,asset,action,power_mw,soc,energy_mwh
-1,147.75,Battery_1,hold,0.0,50.0,10.0
-2,143.67,Battery_1,hold,0.0,50.0,10.0
+1,139.27,Battery_1,hold,0.0,50.0,10.0
+2,139.46,Battery_1,hold,0.0,50.0,10.0
 3,141.89,Battery_1,hold,0.0,50.0,10.0
 4,143.25,Battery_1,hold,0.0,50.0,10.0
 5,143.55,Battery_1,hold,0.0,50.0,10.0
@@ -47,8 +47,8 @@ settlement_period,price,asset,action,power_mw,soc,energy_mwh
 46,141.42,Battery_1,hold,0.0,10.0,2.0
 47,156.43,Battery_1,hold,0.0,10.0,2.0
 48,150.47,Battery_1,hold,0.0,10.0,2.0
-1,147.75,Battery_2,hold,0.0,50.0,50.0
-2,143.67,Battery_2,hold,0.0,50.0,50.0
+1,139.27,Battery_2,hold,0.0,50.0,50.0
+2,139.46,Battery_2,hold,0.0,50.0,50.0
 3,141.89,Battery_2,hold,0.0,50.0,50.0
 4,143.25,Battery_2,hold,0.0,50.0,50.0
 5,143.55,Battery_2,hold,0.0,50.0,50.0
@@ -95,8 +95,8 @@ settlement_period,price,asset,action,power_mw,soc,energy_mwh
 46,141.42,Battery_2,hold,0.0,20.3,20.28
 47,156.43,Battery_2,discharge,12.5,13.3,13.33
 48,150.47,Battery_2,discharge,6.0,10.0,10.0
-1,147.75,Battery_3,hold,0.0,50.0,100.0
-2,143.67,Battery_3,hold,0.0,50.0,100.0
+1,139.27,Battery_3,hold,0.0,50.0,100.0
+2,139.46,Battery_3,hold,0.0,50.0,100.0
 3,141.89,Battery_3,hold,0.0,50.0,100.0
 4,143.25,Battery_3,hold,0.0,50.0,100.0
 5,143.55,Battery_3,hold,0.0,50.0,100.0
@@ -143,8 +143,8 @@ settlement_period,price,asset,action,power_mw,soc,energy_mwh
 46,141.42,Battery_3,hold,0.0,20.3,40.56
 47,156.43,Battery_3,discharge,25.0,13.3,26.67
 48,150.47,Battery_3,discharge,12.0,10.0,20.0
-1,147.75,Battery_4,hold,0.0,50.0,40.0
-2,143.67,Battery_4,hold,0.0,50.0,40.0
+1,139.27,Battery_4,hold,0.0,50.0,40.0
+2,139.46,Battery_4,hold,0.0,50.0,40.0
 3,141.89,Battery_4,hold,0.0,50.0,40.0
 4,143.25,Battery_4,hold,0.0,50.0,40.0
 5,143.55,Battery_4,hold,0.0,50.0,40.0
@@ -191,8 +191,8 @@ settlement_period,price,asset,action,power_mw,soc,energy_mwh
 46,141.42,Battery_4,hold,0.0,20.3,16.22
 47,156.43,Battery_4,discharge,10.0,13.3,10.67
 48,150.47,Battery_4,discharge,4.8,10.0,8.0
-1,147.75,Battery_5,hold,0.0,50.0,80.0
-2,143.67,Battery_5,hold,0.0,50.0,80.0
+1,139.27,Battery_5,hold,0.0,50.0,80.0
+2,139.46,Battery_5,hold,0.0,50.0,80.0
 3,141.89,Battery_5,hold,0.0,50.0,80.0
 4,143.25,Battery_5,hold,0.0,50.0,80.0
 5,143.55,Battery_5,hold,0.0,50.0,80.0

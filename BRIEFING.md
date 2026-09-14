@@ -1,7 +1,7 @@
 # VPP Optimiser — Project Briefing
-**Version:** 24.0
-**Status:** Phase 1 replay and Phase 2 shadow trading built. Daily pipeline live and unattended in the cloud (05:00 UTC), exploration sense-check chained in. **v24: the long-standing settlement-date misalignment bug (open since v15) is fixed** — `fetch_da_prices.py`/`fetch_wind_solar.py` corrected, all ~730 days of historical data migrated and verified lossless — see section 17.
-**⚠️ Every headline number in sections 10b/10c/10d (+24.5% accuracy, 86.2% capture, £26,807/day, etc.) was computed on the OLD, now-corrected date convention and is PENDING RE-VALIDATION.** A single spot-check suggests near-zero aggregate impact (one date's net P&L moved 0.6%), but this has not been confirmed at scale — do not present these figures externally as final until `shadow.py`/`forecast.py`/`forecast_pnl.py`/`cost_sensitivity.py` are re-run against the corrected data. See section 17, v24 entry.
+**Version:** 25.0
+**Status:** Phase 1 replay and Phase 2 shadow trading built. Daily pipeline split across GitHub Actions (fetch, 05:00 UTC) and a cloud routine (check-in, alert, exploration sense-check, 06:00 UTC). **v24: the long-standing settlement-date misalignment bug (open since v15) is fixed** — `fetch_da_prices.py`/`fetch_wind_solar.py` corrected, all ~730 days of historical data migrated and verified lossless. **v25: all headline numbers re-validated against the corrected data — confirmed negligible impact** — see section 17.
+**Headline numbers in sections 10b/10c/10d were re-run against the corrected date data (v25) and confirmed stable**: accuracy skill +24.5% → +24.1%, cost-aware capture 86.2% → 86.6%, conservative £/day £24,702 → £25,558. The small £/day increases come from 40 extra days of data now included (721 vs 681), not from the date fix — capture ratios moved by only ~0.4 points across every method and cost stack. See section 17, v25 entry for the full re-validation.
 **Reading this for anything external:** use **section 10d** (cost-aware) — it supersedes 10c's costless figures. Always quote **£/day alongside the capture ratio**, never the ratio alone. **Section 10's £1.9M / £63k-per-day figures are perfect-foresight and must never be presented as trading results.**
 
 ---
@@ -211,18 +211,20 @@ Walk-forward validated — each day predicted using only prior days. Leakage gua
 | `weekday` | Per-period mean, weekdays predicting weekdays and weekends weekends |
 | `regression` | Per-period least-squares fit of price against Elexon's **day-ahead wind and solar forecast** (90-day window) |
 
-**Definitive results — walk-forward over 696 days scored by all five methods (3 Aug 2024 – 3 Aug 2026):**
+**Definitive results — walk-forward over 721 days scored by all six methods (3 Aug 2024 – 13 Sep 2026), re-validated v25 against settlement-date-corrected data:**
 
 | Method | Days | MAE | RMSE | Cheap-4 hits | Peak-4 hits | Skill vs naive |
 |---|---|---|---|---|---|---|
-| naive | 681 | £22.82 | £29.01 | 0.9 / 4 | 1.7 / 4 | — |
-| mean_7 | 681 | £21.26 | £26.08 | 1.1 / 4 | 2.2 / 4 | +6.8% |
-| mean_90 *(control)* | 681 | £22.78 | £27.32 | 1.1 / 4 | 1.8 / 4 | +0.2% |
-| weekday | 681 | £21.46 | £26.19 | 1.1 / 4 | 2.2 / 4 | +6.0% |
-| regression *(wind+solar)* | 681 | £18.73 | £22.88 | 1.3 / 4 | 2.2 / 4 | +17.9% |
-| **reg_demand** *(+demand)* | 681 | **£17.23** | **£21.14** | **1.4 / 4** | **2.2 / 4** | **+24.5%** |
+| naive | 721 | £23.33 | £29.67 | 0.9 / 4 | 1.7 / 4 | — |
+| mean_7 | 721 | £21.80 | £26.74 | 1.1 / 4 | 2.2 / 4 | +6.6% |
+| mean_90 *(control)* | 721 | £23.67 | £28.22 | 1.1 / 4 | 1.8 / 4 | −1.5% |
+| weekday | 721 | £21.90 | £26.71 | 1.1 / 4 | 2.2 / 4 | +6.2% |
+| regression *(wind+solar)* | 721 | £19.33 | £23.50 | 1.3 / 4 | 2.1 / 4 | +17.1% |
+| **reg_demand** *(+demand)* | 721 | **£17.72** | **£21.65** | **1.4 / 4** | **2.1 / 4** | **+24.1%** |
 
-All methods are compared on **identical days** — `regression` covers fewer days (no wind/solar published for 4 dates, plus its 90-day warm-up), and averaging each method over whatever days it happened to cover would not be like-for-like.
+*(Superseded numbers from the pre-fix, 681-day run: naive £22.82 MAE, reg_demand £17.23 MAE / +24.5% skill — kept here only to show the fix moved skill by −0.4 points, i.e. essentially nothing.)*
+
+All methods are compared on **identical days** — `regression` covers fewer days (no wind/solar published for some dates, plus its 90-day warm-up), and averaging each method over whatever days it happened to cover would not be like-for-like.
 
 **Result 1 — predictive inputs work, and the v16 hypothesis was correct.** Adding the day-ahead wind/solar forecast nearly triples skill over the best history-only method (+18.0% vs +6.5%). This confirms the v16 conclusion that the bottleneck was *inputs*, not more history.
 
@@ -240,36 +242,39 @@ All methods are compared on **identical days** — `regression` covers fewer day
 
 MAE cannot answer whether a forecast is worth trading on. This test does, in pounds. For each day, a dispatch schedule is built using **forecast** prices (what you could actually commit to day-ahead), then settled at **actual** prices (what you really get paid). The `perfect` arm optimises on actual prices — the crystal-ball ceiling — so each method can be scored as a *capture ratio*: the share of theoretically available money it actually won.
 
-**Results — 696 days (35 skipped), DA layer only:**
+**Results — 721 days, DA layer only, re-validated v25 against settlement-date-corrected data:**
 
 | Arm | Total P&L | Per day | Capture |
 |---|---|---|---|
-| `perfect` *(not tradeable)* | £22,860,519 | £33,569 | 100.0% |
-| naive | £16,488,388 | £24,212 | 72.1% |
-| mean_7 | £18,625,963 | £27,351 | 81.5% |
-| regression *(wind+solar)* | £19,636,441 | £28,835 | 85.9% |
-| **reg_demand** *(+demand)* | **£19,904,993** | **£29,229** | **87.1%** |
+| `perfect` *(not tradeable)* | £24,781,062 | £34,370 | 100.0% |
+| naive | £18,179,966 | £25,215 | 73.4% |
+| mean_7 | £20,344,602 | £28,217 | 82.1% |
+| regression *(wind+solar)* | £21,338,452 | £29,596 | 86.1% |
+| **reg_demand** *(+demand)* | **£21,658,359** | **£30,039** | **87.4%** |
 
-**Headline: the best forecast captures 87.1% of perfect-foresight profit**, versus 81.5% for the best history-only method and 72.2% for copying yesterday — worth **£1.02M more than `mean_7`** across 696 days.
+*(Pre-fix, 681-day figures: 87.1% capture, £29,229/day for `reg_demand` — the fix moved capture by +0.3 points, i.e. no material change.)*
+
+**Headline: the best forecast captures 87.4% of perfect-foresight profit**, versus 82.1% for the best history-only method and 73.4% for copying yesterday — worth **£994k more than `mean_7`** across 721 days.
 
 **⚠️ Accuracy converts to money at a sharply diminishing rate — the most important strategic finding so far.**
 
 | Step | Accuracy gain (skill) | P&L gain (capture) | Conversion |
 |---|---|---|---|
-| `mean_7` → `regression` (add wind/solar) | +11.1 pts (6.8 → 17.9%) | +4.4 pts (81.5 → 85.9%) | ~40% |
-| `regression` → `reg_demand` (add demand) | +6.6 pts (17.9 → 24.5%) | +1.2 pts (85.9 → 87.1%) | ~18% |
+| `mean_7` → `regression` (add wind/solar) | +10.5 pts (6.6 → 17.1%) | +4.0 pts (82.1 → 86.1%) | ~38% |
+| `regression` → `reg_demand` (add demand) | +7.0 pts (17.1 → 24.1%) | +1.3 pts (86.1 → 87.4%) | ~19% |
 
-Each increment of forecast accuracy buys **less** profit than the one before. Demand is a real improvement — +1.37% P&L, £268,552 over 681 days, paired t = 3.57, winning on 55.9% of days with the top 5 days contributing only 8.3% of the gain, so it is broad-based and not noise — but it is a *small* one for a whole new data pipeline.
+Each increment of forecast accuracy buys **less** profit than the one before — unchanged conclusion after re-validation. Demand remains a real but small improvement for a whole new data pipeline.
 
 **Implication: chasing further forecast accuracy is close to exhausted as a strategy.** The remaining ~13 points to perfect foresight are unlikely to be recovered by better price prediction — much of it is probably irreducible uncertainty. Future effort is better spent on (a) the markets not yet optimised against forecasts (BM, ancillary/DC), (b) stochastic optimisation that hedges across a *distribution* of prices rather than trusting one path, or (c) execution realism (spreads, costs, market impact), which currently sits outside the model entirely and will lower every number here.
 
-**Historical note on the earlier framing.** The +18.0% MAE improvement produced +5.4% more P&L — roughly a third of the accuracy gain reached the bottom line. This is consistent with the section 10b finding that period *selection* barely improved: the optimiser only needs the price *ranking* to be right, so better level accuracy is partly wasted on it. Anyone reasoning from MAE alone would have overstated the commercial value by ~3×.
+**Historical note on the earlier framing.** The MAE improvement produces a smaller P&L improvement — roughly a third to two-fifths of the accuracy gain reaches the bottom line (see conversion table above). This is consistent with the section 10b finding that period *selection* barely improved: the optimiser only needs the price *ranking* to be right, so better level accuracy is partly wasted on it. Anyone reasoning from MAE alone would overstate the commercial value.
 
-**Robustness — checked, and it holds:**
-- Beats `mean_7` on **406 of 696 days (58.3%)** — a real but not overwhelming edge.
-- **Top 5 days account for only 15.0% of the total advantage**, so this is broad-based, not a few lucky outliers.
-- Median daily capture **88.7%**; 25th percentile 81.3%; 10th percentile 71.1%. Only 1 day of negative P&L, 12 days below 50% capture.
-- Mean daily advantage (£1,463) far exceeds the median (£516) — the edge is right-skewed. It comes mainly from days when renewables swing unusually and price history is blind while the wind forecast is not (e.g. 2025-05-27: `mean_7` £3,922 vs `regression` £40,287). That is a coherent mechanism, not a statistical artefact.
+**Robustness — checked, and it holds (re-validated v25 against corrected data):**
+- Beats `mean_7` on **446 of 721 days (61.9%)** — a real but not overwhelming edge.
+- **Top 5 days account for only 13.3% of the total advantage**, so this is broad-based, not a few lucky outliers.
+- Median daily capture **90.2%**; 25th percentile 83.2%; 10th percentile 73.1%. Only 1 day of negative P&L, 10 days below 50% capture.
+- Mean daily advantage (£1,822) exceeds the median (£605) — the edge is right-skewed, coming mainly from days when renewables swing unusually and price history is blind while the wind forecast is not. That is a coherent mechanism, not a statistical artefact.
+- *(Pre-fix, 696-day figures: 58.3% win rate, 15.0% top-5 share, £1,463/£516 mean/median advantage — all directionally the same after re-validation.)*
 
 **⚠️ What this number is NOT.** It remains a backtest, and must not be presented as a trading track record. It assumes execution of the full volume at the published market-index price, with **no bid/offer spread, no transaction costs, no market impact** (a ~145 MW portfolio bidding into GB DA would move the price against itself), **no battery degradation cost**, and perfect availability. The realistic figure is lower. The defensible claim is the *relative* one — 85.9% vs 81.5% capture, measured like-for-like on identical days — not the absolute pound total.
 
@@ -279,43 +284,47 @@ Each increment of forecast accuracy buys **less** profit than the one before. De
 
 **Central GB assumptions:** degradation **£4.00/MWh discharged**, exchange + clearing fees **£0.15/MWh**, own-bid market impact **£0.75/MWh**, the last two charged in both directions. All configurable.
 
-**Results — 681 days, DA layer:**
+**Results — 721 days, DA layer, re-validated v25 against settlement-date-corrected data:**
 
 | Arm | No costs | Costs, blind | Costs, aware | Capture |
 |---|---|---|---|---|
-| `perfect` *(not tradeable)* | £22,860,519 | £21,060,646 | £21,171,775 | 100.0% |
-| naive | £16,488,388 | £14,693,909 | £15,033,114 | 71.0% |
-| mean_7 | £18,625,963 | £16,853,609 | £16,926,128 | 79.9% |
-| regression | £19,636,441 | £17,809,490 | £17,976,626 | 84.9% |
-| **reg_demand** | £19,904,993 | £18,037,449 | **£18,255,788** | **86.2%** |
+| `perfect` *(not tradeable)* | £24,781,062 | £22,899,624 | £23,013,987 | 100.0% |
+| naive | £18,179,966 | £16,302,388 | £16,636,897 | 72.3% |
+| mean_7 | £20,344,602 | £18,465,133 | £18,501,238 | 80.4% |
+| regression | £21,338,452 | £19,418,859 | £19,619,646 | 85.3% |
+| **reg_demand** | £21,658,359 | £19,698,180 | **£19,941,516** | **86.6%** |
+
+*(Pre-fix, 681-day figures: `reg_demand` £18,255,788 aware / 86.2% capture — the fix moved capture by +0.4 points.)*
 
 *blind* = the optimiser ignores costs (as before) but they are charged at settlement. *aware* = costs are inside the LP objective, so spreads too thin to cover them are not traded.
 
-**Result 1 — costs cost ~8%, not ~50%.** `reg_demand` falls from £19.90M to £18.26M (**−8.3%**), i.e. £29,229 → **£26,807 per day**. Less damaging than feared because this strategy earns from wide daily spreads (£30–60/MWh), which comfortably absorb a ~£5/MWh round trip. A thin-margin strategy would have been destroyed by the same assumptions.
+**Result 1 — costs cost ~8%, not ~50%.** `reg_demand` falls from £21.66M to £19.94M (**−7.9%**), i.e. £30,039 → **£27,658 per day**. Less damaging than feared because this strategy earns from wide daily spreads (£30–60/MWh), which comfortably absorb a ~£5/MWh round trip. A thin-margin strategy would have been destroyed by the same assumptions.
 
-**Result 2 — cost-awareness is worth having but is not transformative: +1.2% (£218,339).** Most trades the optimiser makes are already well above the cost threshold, so declining the marginal ones recovers only a slice. Cheap to implement, so worth keeping.
+**Result 2 — cost-awareness is worth having but is not transformative: +1.2% (£243,336).** Most trades the optimiser makes are already well above the cost threshold, so declining the marginal ones recovers only a slice. Cheap to implement, so worth keeping.
 
-**Result 3 — costs make good forecasting MORE valuable, not less.** `reg_demand`'s advantage over `mean_7` *widens* from +6.87% to **+7.86%** once costs are charged. Costs penalise wrong trades harder than right ones, so forecast quality matters more in a realistic setting than a costless backtest implies. This is the opposite of the usual expectation and is the most commercially useful finding here.
+**Result 3 — costs make good forecasting MORE valuable, not less.** `reg_demand`'s advantage over `mean_7` remains **+7.8%** once costs are charged (aware vs aware), consistent with the pre-fix finding that costs penalise wrong trades harder than right ones, so forecast quality matters more in a realistic setting than a costless backtest implies.
 
-**⚠️ Capture fell slightly, 87.07% → 86.23% (−0.84 pts), and the reason matters.** Perfect foresight retained 92.6% of its costless P&L while `reg_demand` retained 91.7% — the crystal ball is hurt *less* by costs, because it only ever makes wide-margin trades, while a forecast makes marginal and occasionally wrong ones that costs punish hardest.
+**⚠️ Capture fell slightly, 87.4% → 86.6% (−0.8 pts), and the reason matters — unchanged after re-validation.** Perfect foresight retained 92.9% of its costless P&L while `reg_demand` retained 92.1% — the crystal ball is hurt *less* by costs, because it only ever makes wide-margin trades, while a forecast makes marginal and occasionally wrong ones that costs punish hardest.
 
-**Never quote capture without the pounds.** Capture is a share of a moving ceiling: if costs or market conditions drag the ceiling down faster than your P&L, capture can *rise* while you earn *less*. (An earlier read of the 19-day test appeared to show exactly that, but was an artefact of comparing a 19-day sample against a 681-day one — a mistake worth not repeating.) Quote £/day alongside the ratio.
+**Never quote capture without the pounds.** Capture is a share of a moving ceiling: if costs or market conditions drag the ceiling down faster than your P&L, capture can *rise* while you earn *less*. Quote £/day alongside the ratio.
 
 ### Cost sensitivity — how much does the assumption matter?
 
 **Script:** `models/cost_sensitivity.py` **Output:** `data/cost_sensitivity.csv`
 
-The central stack was a judgement call, so the whole test was re-run across a plausible range. `reg_demand`, 681 days:
+The central stack was a judgement call, so the whole test was re-run across a plausible range. `reg_demand`, 721 days, re-validated v25:
 
 | Stack | Degradation | Total P&L | Per day | Capture |
 |---|---|---|---|---|
-| light | £2.00/MWh | £19,104,677 | £28,054 | 86.7% |
-| **central** | £4.00/MWh | £18,255,788 | **£26,807** | 86.2% |
-| **conservative** | £8.00/MWh | £16,822,000 | **£24,702** | 85.3% |
+| light | £2.00/MWh | £20,814,920 | £28,870 | 87.0% |
+| **central** | £4.00/MWh | £19,941,516 | **£27,658** | 86.6% |
+| **conservative** | £8.00/MWh | £18,427,409 | **£25,558** | 85.7% |
 
-**Result 1 — the conclusion is robust to the cost assumption.** Quadrupling degradation from £2 to £8/MWh moves daily P&L by only **14%** (£28,054 → £24,702), and capture by 1.4 points. The strategy does not depend on a favourable cost assumption, because it earns from wide daily spreads rather than thin margins. **Quote the conservative figure — ~£24,700/day — externally.** If the case holds at £8/MWh degradation it will survive challenge.
+*(Pre-fix, 681-day figures: light £28,054/day, central £26,807/day, conservative £24,702/day — the fix moved every figure up by 3-4%, fully explained by 40 extra days of data now included, and moved capture by only ~0.4 points at every stack.)*
 
-**Result 2 — the forecast edge *grows monotonically* as costs rise.** Advantage of `reg_demand` over `mean_7`: **+7.28%** (light) → **+7.86%** (central) → **+8.91%** (conservative). This confirms across the full range what the single-stack run suggested: costs punish wrong trades harder than right ones, so **forecast quality matters most precisely when trading is most expensive**. Commercially this is the strongest argument in the project — the edge is not an artefact of assuming cheap trading, and it widens under pessimistic assumptions.
+**Result 1 — the conclusion is robust to the cost assumption.** Quadrupling degradation from £2 to £8/MWh moves daily P&L by only **13%** (£28,870 → £25,558), and capture by 1.3 points. The strategy does not depend on a favourable cost assumption, because it earns from wide daily spreads rather than thin margins. **Quote the conservative figure — ~£25,558/day — externally.** If the case holds at £8/MWh degradation it will survive challenge.
+
+**Result 2 — the forecast edge *grows monotonically* as costs rise, confirmed after re-validation.** Advantage of `reg_demand` over `mean_7`: **+7.00%** (light) → **+7.78%** (central) → **+9.14%** (conservative) — versus +7.28% / +7.86% / +8.91% pre-fix. Same shape, same conclusion: costs punish wrong trades harder than right ones, so **forecast quality matters most precisely when trading is most expensive**. Commercially this remains the strongest argument in the project.
 
 **Still excluded:** imbalance exposure if delivery deviates from contract, availability/outages, non-linear market impact at larger volumes, and any ID/BM execution cost (this is the DA layer only). The realistic number remains below the figures above.
 
@@ -369,14 +378,14 @@ The central stack was a judgement call, so the whole test was re-run across a pl
 | Regression price model on wind/solar (+18.0% skill, control-verified) | ✅ Done |
 | Test whether forecast accuracy converts into P&L (forecast_pnl.py) | ✅ Done — 85.9% capture |
 | Add demand forecast as a feature (reg_demand) | ✅ Done — +1.2 pts capture |
-| Execution costs modelled (config.py + cost-aware LP) | ✅ Done — 86.2% capture, £26.8k/day |
-| Cost sensitivity sweep (light / central / conservative) | ✅ Done — £24.7k–£28.1k/day |
-| Unattended daily pipeline (daily_pipeline.py) — fetch, backfill, shadow-log | ✅ Done — see §18 |
-| Cloud scheduling of the daily pipeline | ✅ Done (v23) — live, daily 05:00 UTC |
+| Execution costs modelled (config.py + cost-aware LP) | ✅ Done — 86.6% capture, £27.7k/day |
+| Cost sensitivity sweep (light / central / conservative) | ✅ Done — £25.6k–£28.9k/day |
+| Unattended daily pipeline — GitHub Actions (fetch) + cloud routine (alert, exploration) | ✅ Done — see §18 |
+| Cloud scheduling of the daily pipeline | ✅ Done (v25) — Actions 05:00 UTC, cloud routine 06:00 UTC |
 | Sense-check exploration stage (exploration_helpers.py) — tested, real finding | ✅ Done (v23) — chained into daily schedule as standard Stage 2 |
 | Fix clock-change crash in dispatcher.py (replay/shadow break on 2 dates) | ✅ Done (v22) |
 | Fix settlement-date misalignment (market_index/wind_solar, open since v15) | ✅ Done (v24) — see section 17 |
-| Re-validate headline numbers against corrected data (shadow.py, forecast.py, forecast_pnl.py, cost_sensitivity.py) | ⬜ Next — do before quoting v23 figures externally |
+| Re-validate headline numbers against corrected data (shadow.py, forecast.py, forecast_pnl.py, cost_sensitivity.py) | ✅ Done (v25) — confirmed negligible impact, see section 17 |
 | Wire forecast into dispatch (blocked on accuracy) | ⬜ To do |
 | Stochastic optimisation — hedge across a price distribution | ⬜ To do |
 | AI agent layer | ⬜ To do |
@@ -438,7 +447,7 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
 - **✅ FIXED (v24) — Settlement-date misalignment in `market_index_*.csv` (found v15).** Each file used to mix two settlement dates: `fetch_da_prices.py` filtered on `startTime` within a UTC calendar day, but during BST a GB settlement day starts at 23:00 UTC the evening before, so SP1–2 in `market_index_{D}.csv` actually belonged to settlement date D+1. `fetch_wind_solar.py` deliberately mirrored the same convention (and additionally overwrote each row's real `settlementDate` with the query date — a separate, compounding bug in that script specifically).
   **Fix:** both fetchers now widen their query window and filter to Elexon's own `settlementDate == target_date`, correct in both BST/GMT and on clock-change days by construction (no BST logic hand-rolled). All ~730 days of historical `market_index_*`/`wind_solar_*` files migrated via `scripts/migrate_settlement_dates.py` — pure local relabeling for market_index (every row already carried its true date), true dates recovered for wind_solar by joining against the original market_index files' row-position mirroring. Zero data loss (37008→37006 / 36716→36710 rows; the handful dropped were incomplete boundary-date artifacts, not real data). Originals archived to `data/pre_migration_backup/`, not deleted. Verified before applying: row-count distribution checked (only 46/48/50-period files, no partials), `dispatcher.py` run against migrated 2026-06-22 and the clock-change date 2026-03-29 — both clean.
   **One data point from that spot-check:** 2026-06-22's net P&L moved £75,719 → £76,151 (+0.6%) once correctly dated — small, as expected, since the same real prices are used either way, just 1-2 periods reshuffled between adjacent days.
-  **⚠️ Explicit follow-up, not yet done:** `data/shadow_pnl.csv`, `data/forecast_accuracy.csv`, `data/forecast_pnl.csv`, and `data/cost_sensitivity.csv` were all computed on the OLD (mislabeled) date convention. The single-date spot-check above supports a "near-zero aggregate impact" expectation, but that has **not been verified at scale** across all 90+ days — treat every headline number in sections 10b/10c/10d as **pending re-validation** until `shadow.py`, `forecast.py`'s backtest, `forecast_pnl.py`, and `cost_sensitivity.py` are re-run against the corrected data and compared against the current figures. Do not present current figures externally as final until this is done.
+  **✅ Follow-up done (v25) — re-validated at scale, not just spot-checked.** `shadow.py`, `forecast.py`'s backtest, `forecast_pnl.py`, and `cost_sensitivity.py` were all re-run against the corrected data and compared line-for-line against the pre-fix figures. Result: the "near-zero aggregate impact" prediction held. See the v25 entry below for the full comparison.
   **Also unaffected, confirmed independently:** `system_prices_*.csv` and `demand_*.csv` (both query Elexon by true settlement date directly, never had this bug).
   **Minor cleanup opportunity, not done:** `dispatcher.py`'s and `forecast.py`'s clock-change deduplication workarounds, and `forecast.py::load_demand`'s date-based join, existed specifically to cope with this bug and are now unnecessary (harmless to leave, safe to simplify later).
 - **v15 — forecast.py added.** DA price forecasting baselines (`naive`, `mean_7`, `weekday`) plus walk-forward accuracy scoring. Writes only to `data/forecast_{date}.csv` — deliberately NEVER `market_index_{date}.csv`, since that filename is what `fetch_if_missing()` checks; writing there would make replay/shadow silently consume predictions as if they were real published prices. Leakage guard verified: forecasts for a date are identical whether or not that date's actuals are present. No existing files modified. Result recorded honestly in section 10b — beats naive, still not tradeable.
@@ -471,6 +480,17 @@ Scheduled after stochastic optimisation and AI agent layer are functionally comp
   **Lesson worth generalising**: don't assume "the identity check was the problem" fixes everything just because it was the first error — three of these were each independently sufficient to block the pipeline, and each was found only by actually re-running the real thing after the previous fix, not by reasoning about what "should" now work.
 
 - **Exploration agent test-drive: `classify_day()` mislabels the single best day in 90 days of shadow history.** Ran `exploration_helpers.py` for real against `shadow_pnl.csv` (chart + note in `data/explorations/2026-09-13/`). Found: 23 Jun 2026 (£305,190 net P&L, the best day of all 90) is labeled "amber," not "green," because `classify_day()` requires a negative minimum price for "green" regardless of range — that day had a £475/MWh range (£85–£561) but never went negative. Not a P&L bug (money is computed correctly regardless of label) but a real labeling gap: if `day_type` is ever used as a filter or model feature, this day would be invisible despite being the most profitable on record. Low priority, logged for later. Proves the exploration toolkit works as designed on a first real run — not yet chained into the daily schedule.
+
+- **v25 — daily pipeline split across two platforms; the cloud routine cannot reach Elexon at all.** The first real morning run (2026-09-14) of the v23 cloud routine failed every one of its four feed fetches with a proxy-level 403 to `data.elexon.co.uk`. Root cause, confirmed via the sandbox's own proxy diagnostics: Claude Code cloud sandboxes restrict outbound network access to Anthropic's own APIs and package registries (pypi/npm/jsr) only — arbitrary external hosts are blocked by design, not a bug or a missing flag. **Fix: split the pipeline.** Stage 1 (fetch/backfill/shadow-log/commit) now runs as a **GitHub Actions workflow** (`.github/workflows/daily-pipeline.yml`, 05:00 UTC) — GitHub-hosted runners have no such restriction. Stage 2 (the cloud routine, rescheduled to 06:00 UTC for headroom) now: (1) confirms Stage 1 succeeded via the GitHub Actions API, falling back to a `git log` check for today's `github-actions[bot]` commit if that call is itself blocked; (2) sends exactly one `PushNotification` either way — this is the "alert me if it worked or not" behaviour requested and verified working for both outcomes; (3) only if Stage 1 succeeded, runs the same exploration sense-check as before. `daily_pipeline.py`'s `check_git_identity()` gained a third recognized environment (`GITHUB_ACTIONS == "true"`) alongside the existing local-Mac and cloud-sandbox cases, since Actions authenticates via `GITHUB_TOKEN` with no multi-account ambiguity to guard against.
+  **A second, unrelated problem surfaced by the same day's testing:** the cloud routine's own `git push` (for Stage 2's exploration commits) failed with a 403 — "Claude doesn't have GitHub access to eugenekem/vpp-optimiser for your organization" — a GitHub App repository-access issue, not a network block, and not something fixable from inside a routine. Traced to the Claude GitHub App's installation needing its repository access re-confirmed on GitHub's side (Settings → Installations), separate from the claude.ai connector page showing "Connected" (that page only confirms the OAuth link, not per-repo installation scope). User reconnected it; a second end-to-end test run the same day pushed cleanly. Documented here as the fix, not a workaround, since it may recur if the installation is ever modified.
+  Both fixes verified with real triggered runs (not assumed): a manual `workflow_dispatch` and a genuine scheduled fire for Actions; two manual `RemoteTrigger` runs for the cloud routine, the second confirming the push fix.
+
+- **v25 — headline-number re-validation: the near-zero-impact prediction confirmed at scale, not just spot-checked.** Re-ran all four scripts flagged after the v24 settlement-date fix (`shadow.py`, `forecast.py backtest`, `forecast_pnl.py`, `cost_sensitivity.py`) against the corrected data and compared line-for-line against the pre-fix figures, rather than trusting the single-date spot-check to generalise.
+  - **`forecast.py backtest`** (721 vs 681 days): `reg_demand` skill +24.5% → **+24.1%** (−0.4 pts). Every method's ranking and rough magnitude unchanged.
+  - **`forecast_pnl.py`** (721 vs 681 days, cost-aware): `reg_demand` capture 87.1% → **87.4%** (costless) / 86.2% → **86.6%** (cost-aware, +0.4 pts). £/day rose £29,229 → £30,039 (costless) / £26,807 → £27,658 (cost-aware) — a ~3% increase fully explained by 40 extra days of data now included (721 vs 681; the daily pipeline has kept running since the original figures were computed), not by the date fix itself.
+  - **`cost_sensitivity.py`** (721 vs 681 days): capture moved by ~0.4 points at every stack (light 86.7%→87.0%, central 86.2%→86.6%, conservative 85.3%→85.7%); the 13-14% spread between light and conservative assumptions is unchanged; the forecast's edge over `mean_7` under cost pressure is unchanged in shape (+7.00/+7.78/+9.14% vs the old +7.28/+7.86/+8.91%). **New conservative figure to quote externally: ~£25,558/day** (was £24,702/day).
+  - **`shadow.py`** (91 real shadow-trading days, 15 Jun – 13 Sep 2026, re-run against corrected data via a one-off script since `shadow.py`'s own idempotency check would otherwise skip already-logged dates): total net P&L £7,558,059 → £7,522,978 (**−0.46%**). 86 of 91 days changed by under 5%; 5 days moved more, the largest by £14,780 (2026-09-11) — expected, since the date fix reshuffles 1-2 boundary periods between adjacent days, occasionally landing on a day's cheapest/priciest period. One day's `classify_day()` label flipped (not a money bug, see the exploration-agent finding above). Old file archived to `data/pre_revalidation_backup/`, not deleted.
+  **Conclusion: the v24 fix changes almost nothing about the project's actual conclusions.** Capture ratios moved by ~0.4 points everywhere — noise-level, and in the same direction each time, which is itself informative (a real but tiny structural effect, not random). The external-facing headline is now **~£25,558/day (conservative), 85.7% capture** — update anywhere the old £24,702/86.2% figures were being quoted (customer conversations, deck drafts, etc., if any exist outside this repo).
 
 ---
 
