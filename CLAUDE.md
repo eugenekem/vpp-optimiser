@@ -31,7 +31,7 @@ Boundaries, non-negotiable (both stages, wherever they run):
 - If something fails, report the error and stop. Don't attempt to fix code.
 - Exploration output goes only in `data/explorations/{date}/` — charts + a short note, nothing elsewhere.
 
-**Known issue (open, 2026-09-14):** the cloud routine's own `git push` (Stage 2's exploration commits) is currently failing with a 403 — "Claude doesn't have GitHub access to eugenekem/vpp-optimiser for your organization." This is separate from the Elexon network block above and needs the user to reconnect the Claude GitHub App (https://github.com/apps/claude/installations/select_target or https://claude.ai/customize/connectors). Until fixed, exploration findings are computed correctly but may fail to push — the routine will report this in its PushNotification each morning rather than fail silently.
+(2026-09-14: the cloud routine briefly hit a 403 pushing — "Claude doesn't have GitHub access... for your organization" — caused by the Claude GitHub App's repo access needing reconnecting. Fixed same day by the user re-authorizing it; verified with a second test run that pushed cleanly. Mentioned here only because it's the kind of failure this routine should surface via PushNotification, not retry around, if it ever recurs.)
 
 ## Commit convention
 
