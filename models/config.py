@@ -72,6 +72,11 @@ ID_SPREAD_MEAN = 0.0    # £/MWh — intraday prices centred on DA
 ID_SPREAD_STD  = 5.0    # £/MWh — typical intraday volatility around DA
 ID_RANDOM_SEED = 42     # Fixed seed for Phase 1 historical replay
 
+# --- CVaR-hedged stochastic DA optimisation (v26, optimiser_lp_stochastic.py) ---
+CVAR_N_SCENARIOS_DEFAULT = int(_os.environ.get("VPP_CVAR_N_SCENARIOS", 20))
+CVAR_ALPHA_DEFAULT       = float(_os.environ.get("VPP_CVAR_ALPHA", 0.90))
+CVAR_LAMBDA_DEFAULT      = float(_os.environ.get("VPP_CVAR_LAMBDA", 0.5))
+
 # --- Validation: splits must sum to 1.0 ---
 for asset in DA_RESERVATION:
     total = DA_RESERVATION[asset] + ID_RESERVATION[asset] + BM_RESERVATION[asset]

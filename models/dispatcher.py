@@ -5,11 +5,14 @@ import sys
 
 sys.path.append(".")
 from battery import assets
-from config import DA_RESERVATION, ID_RESERVATION, BM_RESERVATION, SOC_INIT
+from config import (DA_RESERVATION, ID_RESERVATION, BM_RESERVATION, SOC_INIT,
+                    CVAR_N_SCENARIOS_DEFAULT, CVAR_ALPHA_DEFAULT, CVAR_LAMBDA_DEFAULT)
 from optimiser_lp import optimise_battery_lp
+from optimiser_lp_stochastic import optimise_battery_lp_cvar
 from optimiser_id import optimise_battery_id, simulate_intraday_prices
 from optimiser_bm import optimise_battery_bm
 import forecast as F
+import forecast_residuals as FR
 
 # --- Dispatcher ---
 #
@@ -36,9 +39,20 @@ import forecast as F
 # and BM already settles on real SSP/SBP.
 # Default None preserves the exact original behaviour (decide AND settle
 # on the real price) so replay.py's Phase 1 results are untouched.
+#
+# A "_stochastic" suffix (added v26, e.g. da_forecast_method="reg_demand_stochastic")
+# additionally hedges the DA decision across many price SCENARIOS (see
+# optimiser_lp_stochastic.py) instead of trusting the single point forecast
+# completely. Only engaged if the base method's point forecast succeeded
+# with NO fallback (da_basis == base_method exactly) - residual history is
+# method-specific, so perturbing a forecast that isn't the one requested
+# would be inconsistent. Falls back to the plain (non-stochastic) result on
+# any failure, same "never claim it happened when it didn't" discipline as
+# the point-forecast fallback above.
 
 
-def run_dispatcher(date, da_forecast_method=None):
+def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
+                    cvar_alpha=None, cvar_lambda=None):
     price_file = f"../data/market_index_{date}.csv"
     bmrs_file = f"../data/system_prices_{date}.csv"
 
@@ -71,27 +85,53 @@ def run_dispatcher(date, da_forecast_method=None):
 
     da_prices = df_prices.set_index("settlementPeriod")["price"].sort_index()
 
+    is_stochastic = bool(da_forecast_method) and da_forecast_method.endswith("_stochastic")
+    base_method = da_forecast_method[:-len("_stochastic")] if is_stochastic else da_forecast_method
+
     # decision_prices drives what the DA leg actually schedules against.
     # da_basis records which price basis was really used, for traceability -
     # only ever "real" unless a forecast method was requested AND succeeded.
     decision_prices = da_prices
     da_basis = "real"
-    if da_forecast_method:
+    if base_method:
         history = F.available_dates()
-        fc, info = F.forecast_prices(date, da_forecast_method, history=history)
-        if fc is None and da_forecast_method != "mean_7":
-            print(f"  ⚠️  '{da_forecast_method}' forecast unavailable for {date} "
+        fc, info = F.forecast_prices(date, base_method, history=history)
+        if fc is None and base_method != "mean_7":
+            print(f"  ⚠️  '{base_method}' forecast unavailable for {date} "
                   f"(likely missing wind/solar or demand data) — falling back to mean_7")
             fc, info = F.forecast_prices(date, "mean_7", history=history)
-            da_forecast_method = "mean_7"
+            base_method = "mean_7"
         if fc is not None:
             fc = fc.reindex(da_prices.index).dropna()
         if fc is not None and not fc.empty:
             decision_prices = fc
-            da_basis = da_forecast_method
+            da_basis = base_method
         else:
             print(f"  ⚠️  No usable forecast for {date} (insufficient history) — "
                   f"falling back to the real price for this day only")
+
+    # Only attempt the stochastic hedge if the point forecast above succeeded
+    # with NO fallback (da_basis == base_method exactly) - see module docstring.
+    scenario_prices = None
+    if is_stochastic and da_basis == base_method:
+        rh = FR.load_residual_history(base_method)
+        scenarios = FR.sample_scenarios(
+            date, base_method,
+            n_scenarios=n_scenarios or CVAR_N_SCENARIOS_DEFAULT,
+            residual_history=rh,
+        )
+        if scenarios:
+            aligned = [s.reindex(da_prices.index).dropna() for s in scenarios]
+            aligned = [s for s in aligned if not s.empty]
+            # optimise_battery_lp_cvar requires every scenario to share the
+            # exact same index - guard rather than let a rare edge-case day
+            # crash the whole dispatch run.
+            if aligned and all(list(s.index) == list(aligned[0].index) for s in aligned):
+                scenario_prices = aligned
+                da_basis = f"{base_method}_stochastic"
+        if scenario_prices is None:
+            print(f"  ⚠️  No usable scenarios for {date} (insufficient residual history "
+                  f"or alignment issue) — using the plain '{base_method}' forecast instead")
 
     id_prices = simulate_intraday_prices(da_prices)  # always from the REAL price - unaffected by da_basis
 
@@ -101,13 +141,23 @@ def run_dispatcher(date, da_forecast_method=None):
     sbp_series = df_bmrs.set_index("settlementPeriod")["systemBuyPrice"]
 
     print(f"Running dispatcher for {date}")
-    print(f"DA basis: {da_basis}" + (f" (decision £{decision_prices.min():.2f}-£{decision_prices.max():.2f} vs real £{da_prices.min():.2f}-£{da_prices.max():.2f})" if da_basis != "real" else f" (£{da_prices.min():.2f} to £{da_prices.max():.2f}/MWh)"))
+    if scenario_prices:
+        all_scenario_vals = pd.concat(scenario_prices, axis=1)
+        print(f"DA basis: {da_basis} ({len(scenario_prices)} scenarios, "
+              f"£{all_scenario_vals.min().min():.2f}-£{all_scenario_vals.max().max():.2f} "
+              f"vs real £{da_prices.min():.2f}-£{da_prices.max():.2f})")
+    elif da_basis != "real":
+        print(f"DA basis: {da_basis} (decision £{decision_prices.min():.2f}-£{decision_prices.max():.2f} "
+              f"vs real £{da_prices.min():.2f}-£{da_prices.max():.2f})")
+    else:
+        print(f"DA basis: {da_basis} (£{da_prices.min():.2f} to £{da_prices.max():.2f}/MWh)")
     print(f"ID price range: £{id_prices.min():.2f} to £{id_prices.max():.2f}/MWh")
     print(f"SSP range:      £{ssp_series.min():.2f} to £{ssp_series.max():.2f}/MWh")
     print(f"SBP range:      £{sbp_series.min():.2f} to £{sbp_series.max():.2f}/MWh")
     print("=" * 60)
 
     all_lp, all_id, all_bm = [], [], []
+    all_cvar_diagnostics = {}
     total_revenue, total_cost = 0.0, 0.0
 
     for battery in assets:
@@ -115,13 +165,24 @@ def run_dispatcher(date, da_forecast_method=None):
 
         # --- DA layer ---
         # Decisions are built on decision_prices (forecast, if requested and
-        # available); settle_price below is always the REAL price, so money
-        # is always what actually happened regardless of da_basis.
+        # available) or hedged across scenario_prices (if stochastic);
+        # settle_price below is always the REAL price, so money is always
+        # what actually happened regardless of da_basis.
         da_committed = 1 - (ID_RESERVATION[battery.name] + BM_RESERVATION[battery.name])
-        df_lp, lp_planned_rev, soc_after_da = optimise_battery_lp(
-            battery, decision_prices, committed_capacity=da_committed,
-            initial_soc_mwh=initial_soc
-        )
+        cvar_diag = None
+        if scenario_prices:
+            df_lp, lp_planned_rev, soc_after_da, cvar_diag = optimise_battery_lp_cvar(
+                battery, scenario_prices, committed_capacity=da_committed,
+                initial_soc_mwh=initial_soc,
+                cvar_alpha=cvar_alpha or CVAR_ALPHA_DEFAULT,
+                cvar_lambda=cvar_lambda if cvar_lambda is not None else CVAR_LAMBDA_DEFAULT,
+            )
+            all_cvar_diagnostics[battery.name] = cvar_diag
+        else:
+            df_lp, lp_planned_rev, soc_after_da = optimise_battery_lp(
+                battery, decision_prices, committed_capacity=da_committed,
+                initial_soc_mwh=initial_soc
+            )
         df_lp["settle_price"] = df_lp["settlement_period"].map(da_prices)
 
         # --- ID layer (starts where DA left off) ---
@@ -211,6 +272,7 @@ def run_dispatcher(date, da_forecast_method=None):
     # which basis actually produced the schedule (could differ from the
     # requested da_forecast_method if it fell back).
     df_lp_all.attrs["da_basis"] = da_basis
+    df_lp_all.attrs["cvar_diagnostics"] = all_cvar_diagnostics  # {} unless stochastic actually ran
 
     df_lp_all.to_csv(f"../data/lp_schedule_{date}.csv", index=False)
     df_id_all.to_csv(f"../data/id_schedule_{date}.csv", index=False)
