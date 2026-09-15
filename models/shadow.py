@@ -13,11 +13,23 @@ from dispatcher import run_dispatcher
 # and appends the result to a running log (data/shadow_pnl.csv) instead of
 # overwriting a fixed historical window like replay.py does.
 #
+# v25: the DA leg's schedule is now built on a genuine price FORECAST
+# (reg_demand, the best-validated method - see BRIEFING.md section 10),
+# not the real published price. This closes the gap the project has been
+# explicit about since Phase 1: a real trader must commit to a DA schedule
+# before the real price is known. Settlement is still at the real price
+# (dispatcher.py's settle_price), so this is a genuinely realistic daily
+# log for the first time - not just Phase 1's replay logic re-run daily.
+# The 91 days logged before this change used the real price for both
+# decision and settlement; they're kept as-is (not deleted or recomputed)
+# and distinguished via the da_basis column, added at the same time.
+#
 # Usage:
 #   python shadow.py               # logs yesterday (today's target date)
 #   python shadow.py 2026-07-29    # backfill a specific past date
 
 LOG_PATH = "../data/shadow_pnl.csv"
+DA_FORECAST_METHOD = "reg_demand"
 
 
 def get_target_date():
@@ -54,14 +66,18 @@ def run_shadow_day(date, log_path=LOG_PATH):
         print(f"  ⏭️  Skipping {date} — data unavailable")
         return
 
-    result = run_dispatcher(date)
+    result = run_dispatcher(date, da_forecast_method=DA_FORECAST_METHOD)
     if result is None:
         print(f"  ⏭️  Skipping {date} — dispatcher returned no result")
         return
 
     df_lp, df_id, df_bm = result
+    da_basis = df_lp.attrs.get("da_basis", "real")
 
-    da_rev, da_cost = gross(df_lp, "price", "price")
+    # settle_price is always the real price (see dispatcher.py) - "price"
+    # would hold the forecast whenever da_basis != "real", and settling
+    # against your own forecast would silently overstate performance.
+    da_rev, da_cost = gross(df_lp, "settle_price", "settle_price")
     id_rev, id_cost = gross(df_id, "id_price", "id_price")
     bm_rev, bm_cost = gross(df_bm, "ssp", "sbp")
 
@@ -73,6 +89,7 @@ def run_shadow_day(date, log_path=LOG_PATH):
     row = {
         "date":          date,
         "day_type":      day_type,
+        "da_basis":      da_basis,
         "da_net":        round(da_rev - da_cost, 2),
         "id_net":        round(id_rev - id_cost, 2),
         "bm_net":        round(bm_rev - bm_cost, 2),
@@ -85,7 +102,7 @@ def run_shadow_day(date, log_path=LOG_PATH):
     write_header = not os.path.exists(log_path)
     row_df.to_csv(log_path, mode="a", header=write_header, index=False)
 
-    print(f"  ✅ DA: £{da_rev-da_cost:,.0f} | ID: £{id_rev-id_cost:,.0f} | BM: £{bm_rev-bm_cost:,.0f} | Net: £{net_pnl:,.0f} | {day_type}")
+    print(f"  ✅ DA ({da_basis}): £{da_rev-da_cost:,.0f} | ID: £{id_rev-id_cost:,.0f} | BM: £{bm_rev-bm_cost:,.0f} | Net: £{net_pnl:,.0f} | {day_type}")
     print(f"  Logged to {log_path}")
 
 
