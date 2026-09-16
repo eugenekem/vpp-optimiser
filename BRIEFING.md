@@ -163,7 +163,7 @@ DA/ID use market price; BM uses SSP for discharge revenue and SBP for charge cos
 | SOC curve per layer | ✅ Built |
 | Price curve per layer (separate axis) | ✅ Built |
 | Charge/discharge MW bar chart per layer (separate axis) | ✅ Built |
-| Monthly P&L view | ⬜ To do |
+| Monthly P&L view | ✅ Built (v27) — cumulative chart, monthly table, real-vs-forecast basis breakdown |
 | Telegram alerts | ⬜ To do |
 
 ---

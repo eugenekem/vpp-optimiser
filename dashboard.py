@@ -56,6 +56,15 @@ def load_bm_schedule(date):
         return pd.read_csv(path)
     return None
 
+@st.cache_data
+def load_shadow_pnl():
+    path = "data/shadow_pnl.csv"
+    if os.path.exists(path):
+        df = pd.read_csv(path)
+        df["date"] = pd.to_datetime(df["date"])
+        return df.sort_values("date")
+    return None
+
 df_prices   = load_prices(yesterday)
 df_pnl      = load_pnl(yesterday)
 df_lp       = load_lp_schedule(yesterday)
@@ -249,6 +258,67 @@ if active_pnl is not None:
         st.markdown("**Net P&L contribution by market**")
         market_net = df_combined_pnl.groupby("layer")["net_pnl"].sum()
         st.bar_chart(market_net, use_container_width=True)
+
+st.divider()
+
+# --- Monthly P&L view ---
+st.markdown("### Monthly P&L view")
+
+df_shadow = load_shadow_pnl()
+if df_shadow is not None and not df_shadow.empty:
+    total_days = len(df_shadow)
+    date_min = df_shadow["date"].min().strftime("%Y-%m-%d")
+    date_max = df_shadow["date"].max().strftime("%Y-%m-%d")
+    st.caption(f"Source: data/shadow_pnl.csv — {total_days} days logged ({date_min} to {date_max})")
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1: st.metric("Total net P&L", f"£{df_shadow['net_pnl'].sum():,.0f}")
+    with col2: st.metric("Avg P&L / day", f"£{df_shadow['net_pnl'].mean():,.0f}")
+    with col3:
+        win_rate = (df_shadow["net_pnl"] > 0).mean() * 100
+        st.metric("Positive days", f"{win_rate:.0f}%")
+    with col4: st.metric("Worst day", f"£{df_shadow['net_pnl'].min():,.0f}")
+
+    st.markdown("**Cumulative P&L**")
+    cumulative = df_shadow.set_index("date")["net_pnl"].cumsum()
+    st.line_chart(cumulative, use_container_width=True)
+
+    st.markdown("**Monthly summary**")
+    monthly = df_shadow.copy()
+    monthly["month"] = monthly["date"].dt.to_period("M").astype(str)
+    monthly_summary = monthly.groupby("month").agg(
+        days=("net_pnl", "count"),
+        total_pnl=("net_pnl", "sum"),
+        avg_pnl=("net_pnl", "mean"),
+    ).reset_index()
+    monthly_table = pd.DataFrame({
+        "Month": monthly_summary["month"],
+        "Days logged": monthly_summary["days"],
+        "Total P&L (£)": monthly_summary["total_pnl"].map(lambda x: f"£{x:,.0f}"),
+        "Avg P&L/day (£)": monthly_summary["avg_pnl"].map(lambda x: f"£{x:,.0f}"),
+    })
+    st.dataframe(monthly_table, use_container_width=True, hide_index=True)
+
+    if "da_basis" in df_shadow.columns:
+        st.markdown("**DA dispatch basis** — real price (hindsight) vs. forecast-driven (`reg_demand`)")
+        basis_summary = df_shadow.groupby("da_basis").agg(
+            days=("net_pnl", "count"),
+            avg_pnl=("net_pnl", "mean"),
+        ).reset_index()
+        basis_table = pd.DataFrame({
+            "Basis": basis_summary["da_basis"],
+            "Days": basis_summary["days"],
+            "Avg net P&L/day (£)": basis_summary["avg_pnl"].map(lambda x: f"£{x:,.0f}"),
+        })
+        st.dataframe(basis_table, use_container_width=True, hide_index=True)
+        st.caption(
+            "`real` = pre-v25 methodology (settled at the real, hindsight-known price). "
+            "`reg_demand` = v25 onward (dispatched on the forecast, settled at the real price) — "
+            "the genuinely realistic figure. Averages aren't directly comparable until more "
+            "`reg_demand` days accumulate."
+        )
+else:
+    st.info("No shadow P&L history yet — run models/shadow.py to start logging.")
 
 st.divider()
 
