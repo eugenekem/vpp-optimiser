@@ -317,6 +317,24 @@ if df_shadow is not None and not df_shadow.empty:
             "the genuinely realistic figure. Averages aren't directly comparable until more "
             "`reg_demand` days accumulate."
         )
+
+    if "cost_aware" in df_shadow.columns:
+        cost_summary = df_shadow.groupby("cost_aware").agg(
+            days=("net_pnl", "count"),
+            avg_pnl=("net_pnl", "mean"),
+        ).reset_index()
+        cost_table = pd.DataFrame({
+            "Cost-aware?": cost_summary["cost_aware"].map({True: "Yes (v28+)", False: "No (pre-v28)"}),
+            "Days": cost_summary["days"],
+            "Avg net P&L/day (£)": cost_summary["avg_pnl"].map(lambda x: f"£{x:,.0f}"),
+        })
+        st.dataframe(cost_table, use_container_width=True, hide_index=True)
+        st.caption(
+            "Whether the DA leg's schedule and settlement reflect real execution costs "
+            "(degradation, fees, market impact) — see BRIEFING.md v28. Pre-v28 rows "
+            "overstate P&L slightly by ignoring DA-layer costs entirely; ID/BM costs "
+            "are not modelled at all yet, in any row."
+        )
 else:
     st.info("No shadow P&L history yet — run models/shadow.py to start logging.")
 

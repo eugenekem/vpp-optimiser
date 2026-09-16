@@ -24,6 +24,17 @@ from dispatcher import run_dispatcher
 # decision and settlement; they're kept as-is (not deleted or recomputed)
 # and distinguished via the da_basis column, added at the same time.
 #
+# v27: the DA leg is now genuinely cost-aware - both the schedule DECISION
+# (dispatcher.py passes real execution costs into the optimiser, so it
+# skips spreads too thin to cover them, matching v20's proven approach)
+# and the SETTLEMENT (net_pnl now reflects real costs, not raw price x
+# power). Until this fix, dispatcher.py's live DA calls never passed
+# costs at all, so every prior row - including all "reg_demand" rows -
+# was computed cost-BLIND despite v20 proving cost-awareness helps.
+# Distinguished via the new cost_aware column, same backfill-then-mark
+# precedent as da_basis. ID/BM remain cost-blind - a distinct, still-open
+# gap (no cost-aware LP variant exists for them at all yet).
+#
 # Usage:
 #   python shadow.py               # logs yesterday (today's target date)
 #   python shadow.py 2026-07-29    # backfill a specific past date
@@ -74,10 +85,13 @@ def run_shadow_day(date, log_path=LOG_PATH):
     df_lp, df_id, df_bm = result
     da_basis = df_lp.attrs.get("da_basis", "real")
 
-    # settle_price is always the real price (see dispatcher.py) - "price"
-    # would hold the forecast whenever da_basis != "real", and settling
-    # against your own forecast would silently overstate performance.
-    da_rev, da_cost = gross(df_lp, "settle_price", "settle_price")
+    # settle_price_discharge/charge are the real price, cost-adjusted (see
+    # dispatcher.py) - "price" would hold the forecast whenever da_basis !=
+    # "real", and settling against your own forecast would silently overstate
+    # performance; the raw "settle_price" (real but cost-blind) would
+    # understate real costs, the bug this v27 fix closes. ID/BM stay
+    # cost-blind - no cost-aware LP variant exists for them yet.
+    da_rev, da_cost = gross(df_lp, "settle_price_discharge", "settle_price_charge")
     id_rev, id_cost = gross(df_id, "id_price", "id_price")
     bm_rev, bm_cost = gross(df_bm, "ssp", "sbp")
 
@@ -90,6 +104,7 @@ def run_shadow_day(date, log_path=LOG_PATH):
         "date":          date,
         "day_type":      day_type,
         "da_basis":      da_basis,
+        "cost_aware":    True,
         "da_net":        round(da_rev - da_cost, 2),
         "id_net":        round(id_rev - id_cost, 2),
         "bm_net":        round(bm_rev - bm_cost, 2),

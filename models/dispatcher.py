@@ -6,7 +6,8 @@ import sys
 sys.path.append(".")
 from battery import assets
 from config import (DA_RESERVATION, ID_RESERVATION, BM_RESERVATION, SOC_INIT,
-                    CVAR_N_SCENARIOS_DEFAULT, CVAR_ALPHA_DEFAULT, CVAR_LAMBDA_DEFAULT)
+                    CVAR_N_SCENARIOS_DEFAULT, CVAR_ALPHA_DEFAULT, CVAR_LAMBDA_DEFAULT,
+                    COST_DEGRADATION, COST_FEE, COST_IMPACT)
 from optimiser_lp import optimise_battery_lp
 from optimiser_lp_stochastic import optimise_battery_lp_cvar
 from optimiser_id import optimise_battery_id, simulate_intraday_prices
@@ -170,20 +171,37 @@ def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
         # what actually happened regardless of da_basis.
         da_committed = 1 - (ID_RESERVATION[battery.name] + BM_RESERVATION[battery.name])
         cvar_diag = None
+        # Real execution costs, matching optimiser_lp.py's own convention and
+        # exactly the expression forecast_pnl.py/da_stochastic_pnl.py already
+        # use (COST_KW) - reused, not re-derived. Was previously omitted here
+        # entirely, so the live DA leg silently defaulted to cost-BLIND
+        # (0.0) despite v20 proving cost-awareness helps - see BRIEFING.md.
+        cost_discharge = COST_IMPACT + COST_FEE + COST_DEGRADATION
+        cost_charge = COST_IMPACT + COST_FEE
         if scenario_prices:
             df_lp, lp_planned_rev, soc_after_da, cvar_diag = optimise_battery_lp_cvar(
                 battery, scenario_prices, committed_capacity=da_committed,
                 initial_soc_mwh=initial_soc,
                 cvar_alpha=cvar_alpha or CVAR_ALPHA_DEFAULT,
                 cvar_lambda=cvar_lambda if cvar_lambda is not None else CVAR_LAMBDA_DEFAULT,
+                cost_discharge=cost_discharge, cost_charge=cost_charge,
             )
             all_cvar_diagnostics[battery.name] = cvar_diag
         else:
             df_lp, lp_planned_rev, soc_after_da = optimise_battery_lp(
                 battery, decision_prices, committed_capacity=da_committed,
-                initial_soc_mwh=initial_soc
+                initial_soc_mwh=initial_soc,
+                cost_discharge=cost_discharge, cost_charge=cost_charge,
             )
+        # settle_price: raw real price, no cost adjustment - kept for
+        # traceability/diagnostics only. Actual settlement (what shadow.py
+        # logs as money) uses the two cost-adjusted columns below, mirroring
+        # forecast_pnl.py::settle(..., with_costs=True) exactly: discharge is
+        # paid price-minus-costs, charge costs price-plus-costs - genuinely
+        # asymmetric, so one shared column can't represent both.
         df_lp["settle_price"] = df_lp["settlement_period"].map(da_prices)
+        df_lp["settle_price_discharge"] = df_lp["settle_price"] - cost_discharge
+        df_lp["settle_price_charge"] = df_lp["settle_price"] + cost_charge
 
         # --- ID layer (starts where DA left off) ---
         id_reserved = ID_RESERVATION[battery.name]
@@ -209,16 +227,22 @@ def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
 
         # --- Compute gross revenue and cost directly from each schedule ---
         # DA/ID: revenue = discharge x price x 0.5h, cost = charge x price x 0.5h
-        def gross_rev_cost(df, price_col):
+        # price_col_charge defaults to price_col_discharge for ID/BM, whose
+        # settlement is symmetric; the DA leg passes distinct cost-adjusted
+        # columns since discharge/charge get opposite cost adjustments.
+        def gross_rev_cost(df, price_col_discharge, price_col_charge=None):
+            price_col_charge = price_col_charge or price_col_discharge
             disc = df[df["action"] == "discharge"]
             chg = df[df["action"] == "charge"]
-            rev = (disc["power_mw"] * disc[price_col] * 0.5).sum()
-            cost = (chg["power_mw"] * chg[price_col] * 0.5).sum()
+            rev = (disc["power_mw"] * disc[price_col_discharge] * 0.5).sum()
+            cost = (chg["power_mw"] * chg[price_col_charge] * 0.5).sum()
             return rev, cost
 
-        # LP settles on settle_price (real) always, not "price" (which holds
-        # decision_prices - identical to settle_price unless da_basis != "real")
-        lp_gross_rev, lp_gross_cost = gross_rev_cost(df_lp, "settle_price")
+        # LP settles on the cost-adjusted real price, not "price" (which holds
+        # decision_prices - the forecast, if da_basis != "real") and not the
+        # raw settle_price (real but cost-blind) - see BRIEFING.md for why
+        # the live path was cost-blind until this fix.
+        lp_gross_rev, lp_gross_cost = gross_rev_cost(df_lp, "settle_price_discharge", "settle_price_charge")
         id_gross_rev, id_gross_cost = gross_rev_cost(df_id, "id_price")
 
         # BM: revenue uses SSP on discharge, cost uses SBP on charge
