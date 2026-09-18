@@ -332,9 +332,11 @@ if df_shadow is not None and not df_shadow.empty:
         st.caption(
             "Whether the schedule and settlement reflect real execution costs "
             "(degradation, fees, market impact) — see BRIEFING.md v29. Pre-v29 rows "
-            "overstate P&L slightly by ignoring costs entirely; v28 briefly made only "
-            "the DA leg cost-aware but no row was ever logged in that window, so "
-            "`True` here has always meant all three legs (DA/ID/BM) together."
+            "overstate P&L slightly by ignoring costs entirely. **One exception:** "
+            "2026-09-16 is `True` but only reflects v28's DA-only cost-awareness — "
+            "the daily pipeline logged it between v28 and v29 landing, before ID/BM "
+            "joined. Not relabelled (this project never rewrites logged history); "
+            "every row from 2026-09-17 onward with `True` covers all three legs."
         )
 else:
     st.info("No shadow P&L history yet — run models/shadow.py to start logging.")
