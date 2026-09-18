@@ -204,18 +204,28 @@ def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
         df_lp["settle_price_charge"] = df_lp["settle_price"] + cost_charge
 
         # --- ID layer (starts where DA left off) ---
+        # Same cost_discharge/cost_charge as the DA leg above - same battery,
+        # same execution economics (degradation/fees/impact don't depend on
+        # which market layer the trade happens in). Previously omitted here
+        # entirely, so ID was cost-BLIND like DA was before v28 - see BRIEFING.md.
         id_reserved = ID_RESERVATION[battery.name]
         df_id, id_rev, soc_after_id = optimise_battery_id(
             battery, id_prices, reserved_fraction=id_reserved,
-            initial_soc_mwh=soc_after_da
+            initial_soc_mwh=soc_after_da,
+            cost_discharge=cost_discharge, cost_charge=cost_charge,
         )
+        df_id["id_price_discharge"] = df_id["id_price"] - cost_discharge
+        df_id["id_price_charge"] = df_id["id_price"] + cost_charge
 
         # --- BM layer (starts where ID left off) ---
         bm_reserved = BM_RESERVATION[battery.name]
         df_bm, bm_rev, soc_after_bm = optimise_battery_bm(
             battery, ssp_series, sbp_series, reserved_fraction=bm_reserved,
-            initial_soc_mwh=soc_after_id
+            initial_soc_mwh=soc_after_id,
+            cost_discharge=cost_discharge, cost_charge=cost_charge,
         )
+        df_bm["ssp_settle"] = df_bm["ssp"] - cost_discharge
+        df_bm["sbp_settle"] = df_bm["sbp"] + cost_charge
 
         # Attach extra columns for traceability
         df_id["da_price"] = da_prices.values
@@ -226,10 +236,12 @@ def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
         all_bm.append(df_bm)
 
         # --- Compute gross revenue and cost directly from each schedule ---
-        # DA/ID: revenue = discharge x price x 0.5h, cost = charge x price x 0.5h
-        # price_col_charge defaults to price_col_discharge for ID/BM, whose
-        # settlement is symmetric; the DA leg passes distinct cost-adjusted
-        # columns since discharge/charge get opposite cost adjustments.
+        # revenue = discharge x price x 0.5h, cost = charge x price x 0.5h.
+        # price_col_charge defaults to price_col_discharge when settlement is
+        # symmetric; all three legs now pass distinct cost-adjusted columns
+        # since discharge/charge get opposite cost adjustments (v29: ID/BM
+        # joined the DA leg in settling cost-aware, not just cost-blind raw
+        # price x power - see BRIEFING.md).
         def gross_rev_cost(df, price_col_discharge, price_col_charge=None):
             price_col_charge = price_col_charge or price_col_discharge
             disc = df[df["action"] == "discharge"]
@@ -243,13 +255,8 @@ def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
         # raw settle_price (real but cost-blind) - see BRIEFING.md for why
         # the live path was cost-blind until this fix.
         lp_gross_rev, lp_gross_cost = gross_rev_cost(df_lp, "settle_price_discharge", "settle_price_charge")
-        id_gross_rev, id_gross_cost = gross_rev_cost(df_id, "id_price")
-
-        # BM: revenue uses SSP on discharge, cost uses SBP on charge
-        bm_disc = df_bm[df_bm["action"] == "discharge"]
-        bm_chg = df_bm[df_bm["action"] == "charge"]
-        bm_gross_rev = (bm_disc["power_mw"] * bm_disc["ssp"] * 0.5).sum()
-        bm_gross_cost = (bm_chg["power_mw"] * bm_chg["sbp"] * 0.5).sum()
+        id_gross_rev, id_gross_cost = gross_rev_cost(df_id, "id_price_discharge", "id_price_charge")
+        bm_gross_rev, bm_gross_cost = gross_rev_cost(df_bm, "ssp_settle", "sbp_settle")
 
         asset_revenue = lp_gross_rev + id_gross_rev + bm_gross_rev
         asset_cost = lp_gross_cost + id_gross_cost + bm_gross_cost

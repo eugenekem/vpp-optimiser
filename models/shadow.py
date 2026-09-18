@@ -35,6 +35,15 @@ from dispatcher import run_dispatcher
 # precedent as da_basis. ID/BM remain cost-blind - a distinct, still-open
 # gap (no cost-aware LP variant exists for them at all yet).
 #
+# v29: ID and BM now carry the same cost-awareness as DA - same
+# cost_discharge/cost_charge mechanism, same reused cost constants (see
+# dispatcher.py), applied to both the ID/BM schedule DECISIONS and their
+# SETTLEMENT. cost_aware=True now means all three legs are cost-aware, not
+# just DA - the live path has no remaining cost-blind gap. No relabeling
+# needed: no row in this file has ever been logged with cost_aware=True
+# before this change, so the column's meaning shifts cleanly with no
+# historical ambiguity.
+#
 # Usage:
 #   python shadow.py               # logs yesterday (today's target date)
 #   python shadow.py 2026-07-29    # backfill a specific past date
@@ -89,11 +98,12 @@ def run_shadow_day(date, log_path=LOG_PATH):
     # dispatcher.py) - "price" would hold the forecast whenever da_basis !=
     # "real", and settling against your own forecast would silently overstate
     # performance; the raw "settle_price" (real but cost-blind) would
-    # understate real costs, the bug this v27 fix closes. ID/BM stay
-    # cost-blind - no cost-aware LP variant exists for them yet.
+    # understate real costs, the bug this v27 fix closes. ID/BM now settle
+    # cost-aware too (v29) via the same pattern - id_price/ssp/sbp adjusted
+    # by the same cost_discharge/cost_charge as DA.
     da_rev, da_cost = gross(df_lp, "settle_price_discharge", "settle_price_charge")
-    id_rev, id_cost = gross(df_id, "id_price", "id_price")
-    bm_rev, bm_cost = gross(df_bm, "ssp", "sbp")
+    id_rev, id_cost = gross(df_id, "id_price_discharge", "id_price_charge")
+    bm_rev, bm_cost = gross(df_bm, "ssp_settle", "sbp_settle")
 
     total_rev = da_rev + id_rev + bm_rev
     total_cost = da_cost + id_cost + bm_cost

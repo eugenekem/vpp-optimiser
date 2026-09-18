@@ -24,7 +24,8 @@ def simulate_intraday_prices(da_prices, seed=ID_RANDOM_SEED):
     return pd.Series(da_prices.values + spread, index=da_prices.index)
 
 
-def optimise_battery_id(battery, id_prices, reserved_fraction, initial_soc_mwh=None):
+def optimise_battery_id(battery, id_prices, reserved_fraction, initial_soc_mwh=None,
+                        cost_discharge=0.0, cost_charge=0.0):
     """
     Solve the LP dispatch problem for the reserved intraday capacity slice.
 
@@ -36,6 +37,11 @@ def optimise_battery_id(battery, id_prices, reserved_fraction, initial_soc_mwh=N
         Fraction of battery MW reserved for ID (ID_RESERVATION).
     initial_soc_mwh : float or None
         Starting SOC in MWh, handed off from DA layer. Defaults to SOC_INIT if None.
+    cost_discharge, cost_charge : float
+        Execution costs in £/MWh, same convention as optimiser_lp.py — subtracted
+        from the discharge price and added to the charge price inside the
+        objective, so the optimiser stops cycling for spreads too thin to cover
+        real costs. Default 0.0 preserves the original costless behaviour.
 
     Returns
     -------
@@ -59,7 +65,8 @@ def optimise_battery_id(battery, id_prices, reserved_fraction, initial_soc_mwh=N
     )
 
     prob += pulp.lpSum([
-        discharge[t] * id_prices[t] * DURATION - charge[t] * id_prices[t] * DURATION
+        discharge[t] * (id_prices[t] - cost_discharge) * DURATION
+        - charge[t] * (id_prices[t] + cost_charge) * DURATION
         for t in T
     ]), "id_net_revenue"
 

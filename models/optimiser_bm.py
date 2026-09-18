@@ -16,7 +16,8 @@ from config import BM_RESERVATION, DURATION, SOC_INIT
 # initial_soc_mwh: starting SOC handed off from the ID layer (sequential chain).
 
 
-def optimise_battery_bm(battery, ssp_series, sbp_series, reserved_fraction, initial_soc_mwh=None):
+def optimise_battery_bm(battery, ssp_series, sbp_series, reserved_fraction, initial_soc_mwh=None,
+                        cost_discharge=0.0, cost_charge=0.0):
     """
     Solve the LP dispatch problem for the BM capacity slice.
 
@@ -31,6 +32,11 @@ def optimise_battery_bm(battery, ssp_series, sbp_series, reserved_fraction, init
         Fraction of battery MW reserved for BM (BM_RESERVATION).
     initial_soc_mwh : float or None
         Starting SOC in MWh, handed off from ID layer. Defaults to SOC_INIT if None.
+    cost_discharge, cost_charge : float
+        Execution costs in £/MWh, same convention as optimiser_lp.py — subtracted
+        from SSP on discharge and added to SBP on charge inside the objective, so
+        the optimiser stops cycling for spreads too thin to cover real costs.
+        Default 0.0 preserves the original costless behaviour.
 
     Returns
     -------
@@ -54,7 +60,8 @@ def optimise_battery_bm(battery, ssp_series, sbp_series, reserved_fraction, init
     )
 
     prob += pulp.lpSum([
-        discharge[t] * ssp_series[t] * DURATION - charge[t] * sbp_series[t] * DURATION
+        discharge[t] * (ssp_series[t] - cost_discharge) * DURATION
+        - charge[t] * (sbp_series[t] + cost_charge) * DURATION
         for t in T
     ]), "bm_net_revenue"
 
