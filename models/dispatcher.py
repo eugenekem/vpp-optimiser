@@ -53,7 +53,7 @@ import forecast_residuals as FR
 
 
 def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
-                    cvar_alpha=None, cvar_lambda=None):
+                    cvar_alpha=None, cvar_lambda=None, write_schedules=True):
     price_file = f"../data/market_index_{date}.csv"
     bmrs_file = f"../data/system_prices_{date}.csv"
 
@@ -305,11 +305,13 @@ def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
     df_lp_all.attrs["da_basis"] = da_basis
     df_lp_all.attrs["cvar_diagnostics"] = all_cvar_diagnostics  # {} unless stochastic actually ran
 
-    df_lp_all.to_csv(f"../data/lp_schedule_{date}.csv", index=False)
-    df_id_all.to_csv(f"../data/id_schedule_{date}.csv", index=False)
-    df_bm_all.to_csv(f"../data/bm_schedule_{date}.csv", index=False)
-
-    print(f"\nSaved updated schedules with SOC handoff to data/*_schedule_{date}.csv")
+    # write_schedules=False lets sweeps (reservation_sensitivity.py) run many
+    # what-if dispatches without overwriting the tracked schedule CSVs.
+    if write_schedules:
+        df_lp_all.to_csv(f"../data/lp_schedule_{date}.csv", index=False)
+        df_id_all.to_csv(f"../data/id_schedule_{date}.csv", index=False)
+        df_bm_all.to_csv(f"../data/bm_schedule_{date}.csv", index=False)
+        print(f"\nSaved updated schedules with SOC handoff to data/*_schedule_{date}.csv")
 
     return df_lp_all, df_id_all, df_bm_all
 

@@ -3,34 +3,48 @@
 # Single source of truth for capacity reservation splits across DA, ID, and BM.
 # All optimiser layers import from here — change splits in one place only.
 #
-# Splits must sum to 1.0 per asset:
-#   Battery_1:     DA=0.40  ID=0.30  BM=0.30  → 1.00
-#   Batteries 2-5: DA=0.50  ID=0.20  BM=0.30  → 1.00
+# Splits must sum to 1.0 per asset. Defaults (never backtested until v30's
+# reservation_sensitivity.py sweep) split batteries into two duration classes:
+#   Battery_1 (2-hour):     DA=0.40  ID=0.30  BM=0.30  → 1.00
+#   Batteries 2-5 (4-hour): DA=0.50  ID=0.20  BM=0.30  → 1.00
+#
+# ID/BM are overridable per-run via environment variables (same mechanism as
+# the execution costs below) so reservation_sensitivity.py can sweep candidate
+# splits in subprocesses without editing this file. DA is always the implied
+# complement (1 - ID - BM) per class — dispatcher.py has only ever read DA's
+# committed capacity this way (see BRIEFING.md v30), so deriving it here keeps
+# config.py honest about what's actually live rather than hardcoding a DA
+# value that could silently drift out of sync with an overridden ID/BM.
+import os as _os
+
+_ID_4H = float(_os.environ.get("VPP_RES_ID_4H", 0.20))
+_BM_4H = float(_os.environ.get("VPP_RES_BM_4H", 0.30))
+_ID_2H = float(_os.environ.get("VPP_RES_ID_2H", 0.30))
+_BM_2H = float(_os.environ.get("VPP_RES_BM_2H", 0.30))
+
+assert _ID_4H + _BM_4H <= 1.0, f"4-hour class ID+BM ({_ID_4H + _BM_4H:.2f}) exceeds 1.0 — DA would go negative"
+assert _ID_2H + _BM_2H <= 1.0, f"2-hour class ID+BM ({_ID_2H + _BM_2H:.2f}) exceeds 1.0 — DA would go negative"
 
 # --- Capacity reservation splits ---
 
-DA_RESERVATION = {
-    "Battery_1": 0.40,
-    "Battery_2": 0.50,
-    "Battery_3": 0.50,
-    "Battery_4": 0.50,
-    "Battery_5": 0.50,
-}
-
 ID_RESERVATION = {
-    "Battery_1": 0.30,
-    "Battery_2": 0.20,
-    "Battery_3": 0.20,
-    "Battery_4": 0.20,
-    "Battery_5": 0.20,
+    "Battery_1": _ID_2H,
+    "Battery_2": _ID_4H,
+    "Battery_3": _ID_4H,
+    "Battery_4": _ID_4H,
+    "Battery_5": _ID_4H,
 }
 
 BM_RESERVATION = {
-    "Battery_1": 0.30,
-    "Battery_2": 0.30,
-    "Battery_3": 0.30,
-    "Battery_4": 0.30,
-    "Battery_5": 0.30,
+    "Battery_1": _BM_2H,
+    "Battery_2": _BM_4H,
+    "Battery_3": _BM_4H,
+    "Battery_4": _BM_4H,
+    "Battery_5": _BM_4H,
+}
+
+DA_RESERVATION = {
+    name: 1.0 - ID_RESERVATION[name] - BM_RESERVATION[name] for name in ID_RESERVATION
 }
 
 # --- Battery operating parameters ---
@@ -52,7 +66,6 @@ DURATION   = 0.50       # Settlement period duration (hours)
 # Overridable per-run via environment variables so a sensitivity sweep can vary
 # them in subprocesses without editing this file — an interrupted run can never
 # leave the repo holding another scenario's assumptions.
-import os as _os
 
 COST_DEGRADATION = float(_os.environ.get("VPP_COST_DEGRADATION", 4.00))
                           # per MWh DISCHARGED — battery life consumed by cycling

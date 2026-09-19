@@ -278,6 +278,11 @@ if df_shadow is not None and not df_shadow.empty:
         win_rate = (df_shadow["net_pnl"] > 0).mean() * 100
         st.metric("Positive days", f"{win_rate:.0f}%")
     with col4: st.metric("Worst day", f"£{df_shadow['net_pnl'].min():,.0f}")
+    st.caption(
+        "⚠️ **Not a trading estimate.** The BM leg (~29% of this total) decides with perfect "
+        "foresight of the real imbalance price, and the ID leg trades a synthetic price — only the "
+        "DA leg (~59%) is forecast-driven. Don't quote these totals externally; see BRIEFING.md v30."
+    )
 
     st.markdown("**Cumulative P&L**")
     cumulative = df_shadow.set_index("date")["net_pnl"].cumsum()
