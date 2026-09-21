@@ -279,9 +279,11 @@ if df_shadow is not None and not df_shadow.empty:
         st.metric("Positive days", f"{win_rate:.0f}%")
     with col4: st.metric("Worst day", f"£{df_shadow['net_pnl'].min():,.0f}")
     st.caption(
-        "⚠️ **Not a trading estimate.** The BM leg (~29% of this total) decides with perfect "
-        "foresight of the real imbalance price, and the ID leg trades a synthetic price — only the "
-        "DA leg (~59%) is forecast-driven. Don't quote these totals externally; see BRIEFING.md v30."
+        "⚠️ **Not a trading estimate.** Rows logged before the v31 change (`bm_basis = foresight`, "
+        "see the table below) let the BM leg decide with perfect foresight of the real imbalance "
+        "price, so they overstate P&L. Rows from v31 on decide BM on the real DA price instead — "
+        "but the ID leg still trades a synthetic price, and BM fill/acceptance isn't modelled. "
+        "Don't quote these totals externally; see BRIEFING.md v30/v31."
     )
 
     st.markdown("**Cumulative P&L**")
@@ -342,6 +344,27 @@ if df_shadow is not None and not df_shadow.empty:
             "the daily pipeline logged it between v28 and v29 landing, before ID/BM "
             "joined. Not relabelled (this project never rewrites logged history); "
             "every row from 2026-09-17 onward with `True` covers all three legs."
+        )
+
+    if "bm_basis" in df_shadow.columns:
+        st.markdown("**BM decision basis** — perfect foresight (pre-v31) vs. real DA price (v31+)")
+        bm_summary = df_shadow.groupby("bm_basis").agg(
+            days=("net_pnl", "count"),
+            avg_bm=("bm_net", "mean"),
+            avg_pnl=("net_pnl", "mean"),
+        ).reset_index()
+        bm_table = pd.DataFrame({
+            "BM basis": bm_summary["bm_basis"],
+            "Days": bm_summary["days"],
+            "Avg BM P&L/day (£)": bm_summary["avg_bm"].map(lambda x: f"£{x:,.0f}"),
+            "Avg net P&L/day (£)": bm_summary["avg_pnl"].map(lambda x: f"£{x:,.0f}"),
+        })
+        st.dataframe(bm_table, use_container_width=True, hide_index=True)
+        st.caption(
+            "`foresight` = the BM leg saw the whole day's real imbalance price before deciding "
+            "(not achievable in practice). `real_da` = decided on the real DA price, settled at the "
+            "real imbalance price. Over a 60-day backtest the change lowers BM P&L ~30% and the "
+            "total ~9%; averages here aren't comparable until more `real_da` days accumulate."
         )
 else:
     st.info("No shadow P&L history yet — run models/shadow.py to start logging.")

@@ -44,12 +44,26 @@ from dispatcher import run_dispatcher
 # before this change, so the column's meaning shifts cleanly with no
 # historical ambiguity.
 #
+# v31: the BM leg no longer decides with perfect foresight. Until now
+# dispatcher.py handed optimiser_bm.py the whole day's REAL imbalance price
+# (SSP == SBP) as its decision input, so ~29% of every logged net_pnl rested
+# on knowing the future. BM now decides on the real DA price (known once DA
+# clears - the same reason ID may know it) and still settles at the real
+# imbalance price (bm_decision_method="real_da"). Over 60 days that lowers
+# BM P&L ~30% and the total ~9%; DA and ID are untouched. Distinguished via
+# the new bm_basis column ("foresight" = all rows before this change,
+# backfilled; "real_da" = from here on), same label-don't-rewrite precedent
+# as da_basis and cost_aware. Still NOT modelled: BM fill/acceptance
+# (NESO chooses what is taken; pay-as-bid), so BM stays an imbalance-
+# exposure figure rather than a defensible standalone revenue claim.
+#
 # Usage:
 #   python shadow.py               # logs yesterday (today's target date)
 #   python shadow.py 2026-07-29    # backfill a specific past date
 
 LOG_PATH = "../data/shadow_pnl.csv"
 DA_FORECAST_METHOD = "reg_demand"
+BM_DECISION_METHOD = "real_da"
 
 
 def get_target_date():
@@ -86,13 +100,15 @@ def run_shadow_day(date, log_path=LOG_PATH):
         print(f"  ⏭️  Skipping {date} — data unavailable")
         return
 
-    result = run_dispatcher(date, da_forecast_method=DA_FORECAST_METHOD)
+    result = run_dispatcher(date, da_forecast_method=DA_FORECAST_METHOD,
+                            bm_decision_method=BM_DECISION_METHOD)
     if result is None:
         print(f"  ⏭️  Skipping {date} — dispatcher returned no result")
         return
 
     df_lp, df_id, df_bm = result
     da_basis = df_lp.attrs.get("da_basis", "real")
+    bm_basis = df_lp.attrs.get("bm_basis", "foresight")
 
     # settle_price_discharge/charge are the real price, cost-adjusted (see
     # dispatcher.py) - "price" would hold the forecast whenever da_basis !=
@@ -115,6 +131,7 @@ def run_shadow_day(date, log_path=LOG_PATH):
         "day_type":      day_type,
         "da_basis":      da_basis,
         "cost_aware":    True,
+        "bm_basis":      bm_basis,
         "da_net":        round(da_rev - da_cost, 2),
         "id_net":        round(id_rev - id_cost, 2),
         "bm_net":        round(bm_rev - bm_cost, 2),

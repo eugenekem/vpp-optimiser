@@ -50,10 +50,18 @@ import forecast_residuals as FR
 # would be inconsistent. Falls back to the plain (non-stochastic) result on
 # any failure, same "never claim it happened when it didn't" discipline as
 # the point-forecast fallback above.
+#
+# bm_decision_method (added v31): None (default) decides the BM leg on the
+# REAL day's SSP/SBP - perfect foresight of the imbalance price, which is
+# what Phase 1's replay.py ceiling relies on and must stay untouched.
+# "real_da" decides BM on the real DA price instead (legitimately known by
+# then - DA has cleared, same reason ID may know it) while still SETTLING at
+# the real SSP/SBP. Recorded as df_bm.attrs["bm_basis"] for shadow.py.
 
 
 def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
-                    cvar_alpha=None, cvar_lambda=None, write_schedules=True):
+                    cvar_alpha=None, cvar_lambda=None, write_schedules=True,
+                    bm_decision_method=None):
     price_file = f"../data/market_index_{date}.csv"
     bmrs_file = f"../data/system_prices_{date}.csv"
 
@@ -141,6 +149,16 @@ def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
     ssp_series = df_bmrs.set_index("settlementPeriod")["systemSellPrice"]
     sbp_series = df_bmrs.set_index("settlementPeriod")["systemBuyPrice"]
 
+    if bm_decision_method == "real_da":
+        # ffill/bfill covers clock-change days where DA and BMRS period counts differ
+        bm_decision_prices = da_prices.reindex(ssp_series.index).ffill().bfill()
+        bm_basis = "real_da"
+    elif bm_decision_method is None:
+        bm_decision_prices = None
+        bm_basis = "foresight"
+    else:
+        raise ValueError(f"Unknown bm_decision_method: {bm_decision_method!r}")
+
     print(f"Running dispatcher for {date}")
     if scenario_prices:
         all_scenario_vals = pd.concat(scenario_prices, axis=1)
@@ -155,6 +173,7 @@ def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
     print(f"ID price range: £{id_prices.min():.2f} to £{id_prices.max():.2f}/MWh")
     print(f"SSP range:      £{ssp_series.min():.2f} to £{ssp_series.max():.2f}/MWh")
     print(f"SBP range:      £{sbp_series.min():.2f} to £{sbp_series.max():.2f}/MWh")
+    print(f"BM basis:       {bm_basis}")
     print("=" * 60)
 
     all_lp, all_id, all_bm = [], [], []
@@ -223,6 +242,7 @@ def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
             battery, ssp_series, sbp_series, reserved_fraction=bm_reserved,
             initial_soc_mwh=soc_after_id,
             cost_discharge=cost_discharge, cost_charge=cost_charge,
+            decision_prices=bm_decision_prices,
         )
         df_bm["ssp_settle"] = df_bm["ssp"] - cost_discharge
         df_bm["sbp_settle"] = df_bm["sbp"] + cost_charge
@@ -304,6 +324,7 @@ def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
     # requested da_forecast_method if it fell back).
     df_lp_all.attrs["da_basis"] = da_basis
     df_lp_all.attrs["cvar_diagnostics"] = all_cvar_diagnostics  # {} unless stochastic actually ran
+    df_lp_all.attrs["bm_basis"] = bm_basis  # on df_lp like da_basis: shadow.py reads it from there
 
     # write_schedules=False lets sweeps (reservation_sensitivity.py) run many
     # what-if dispatches without overwriting the tracked schedule CSVs.

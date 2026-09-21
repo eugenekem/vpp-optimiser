@@ -17,7 +17,7 @@ from config import BM_RESERVATION, DURATION, SOC_INIT
 
 
 def optimise_battery_bm(battery, ssp_series, sbp_series, reserved_fraction, initial_soc_mwh=None,
-                        cost_discharge=0.0, cost_charge=0.0):
+                        cost_discharge=0.0, cost_charge=0.0, decision_prices=None):
     """
     Solve the LP dispatch problem for the BM capacity slice.
 
@@ -37,6 +37,12 @@ def optimise_battery_bm(battery, ssp_series, sbp_series, reserved_fraction, init
         from SSP on discharge and added to SBP on charge inside the objective, so
         the optimiser stops cycling for spreads too thin to cover real costs.
         Default 0.0 preserves the original costless behaviour.
+    decision_prices : pd.Series or None
+        If given, the LP decides charge/discharge against THESE prices (both
+        directions) instead of the real SSP/SBP. The returned ssp/sbp/
+        price_used columns still hold the real prices, so settlement is
+        unaffected. None (default) decides on the real SSP/SBP, i.e. with
+        perfect foresight of the imbalance price - the Phase 1 ceiling.
 
     Returns
     -------
@@ -59,9 +65,12 @@ def optimise_battery_bm(battery, ssp_series, sbp_series, reserved_fraction, init
         upBound=battery.soc_max * battery.capacity_mwh
     )
 
+    dec_ssp = ssp_series if decision_prices is None else decision_prices
+    dec_sbp = sbp_series if decision_prices is None else decision_prices
+
     prob += pulp.lpSum([
-        discharge[t] * (ssp_series[t] - cost_discharge) * DURATION
-        - charge[t] * (sbp_series[t] + cost_charge) * DURATION
+        discharge[t] * (dec_ssp[t] - cost_discharge) * DURATION
+        - charge[t] * (dec_sbp[t] + cost_charge) * DURATION
         for t in T
     ]), "bm_net_revenue"
 

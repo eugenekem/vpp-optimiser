@@ -64,7 +64,8 @@ def run_worker(battery_class, id_pct, bm_pct, n_days):
     total_net = 0.0
     days_counted = 0
     for date in dates:
-        result = run_dispatcher(date, da_forecast_method="reg_demand", write_schedules=False)
+        result = run_dispatcher(date, da_forecast_method="reg_demand", write_schedules=False,
+                                bm_decision_method="real_da")
         if result is None:
             continue
         df_lp, df_id, df_bm = result
