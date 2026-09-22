@@ -40,6 +40,18 @@ FLOOR = 0.10
 DEFAULTS = {"4h": (0.20, 0.30), "2h": (0.30, 0.30)}
 ENV_VARS = {"4h": ("VPP_RES_ID_4H", "VPP_RES_BM_4H"), "2h": ("VPP_RES_ID_2H", "VPP_RES_BM_2H")}
 
+# mode="realistic" (default): ID decides with foresight of the simulated
+# intraday spread, BM decides on the real DA price (v31) - what shadow.py
+# actually runs. mode="blind": ID and BM both decide on the same DA FORECAST
+# the DA leg itself trades on - no leg sees anything DA doesn't. Diagnostic
+# only (never used by shadow.py): isolates whether a split's edge is a real
+# ID/BM opportunity or just harvesting DA's forecast error (BRIEFING.md v31
+# follow-up, prompted by the honest-BM sweep still favouring less DA).
+DECISION_METHODS = {
+    "realistic": {"id_decision_method": None, "bm_decision_method": "real_da"},
+    "blind": {"id_decision_method": "da_forecast", "bm_decision_method": "da_forecast"},
+}
+
 
 def grid_points():
     """All (id_pct, bm_pct) on a GRID_STEP lattice with da = 1-id-bm >= FLOOR."""
@@ -54,18 +66,19 @@ def grid_points():
     return points
 
 
-def run_worker(battery_class, id_pct, bm_pct, n_days):
+def run_worker(battery_class, id_pct, bm_pct, n_days, mode="realistic"):
     sys.path.append(".")
     import forecast as F
     from dispatcher import run_dispatcher
     from shadow import gross
 
+    methods = DECISION_METHODS[mode]
     dates = F.available_dates()[-n_days:]
     total_net = 0.0
     days_counted = 0
     for date in dates:
         result = run_dispatcher(date, da_forecast_method="reg_demand", write_schedules=False,
-                                bm_decision_method="real_da")
+                                **methods)
         if result is None:
             continue
         df_lp, df_id, df_bm = result
@@ -74,18 +87,19 @@ def run_worker(battery_class, id_pct, bm_pct, n_days):
         bm_rev, bm_cost = gross(df_bm, "ssp_settle", "sbp_settle")
         total_net += (da_rev + id_rev + bm_rev) - (da_cost + id_cost + bm_cost)
         days_counted += 1
-    print(json.dumps({"class": battery_class, "id_pct": id_pct, "bm_pct": bm_pct,
+    print(json.dumps({"class": battery_class, "mode": mode, "id_pct": id_pct, "bm_pct": bm_pct,
                        "days": days_counted, "net_pnl": total_net}))
 
 
-def run_scenario(battery_class, id_pct, bm_pct, n_days):
+def run_scenario(battery_class, id_pct, bm_pct, n_days, mode="realistic"):
     """Runs one grid point in a subprocess with the split injected via env vars."""
     id_var, bm_var = ENV_VARS[battery_class]
     env = dict(os.environ)
     env[id_var] = str(id_pct)
     env[bm_var] = str(bm_pct)
     r = subprocess.run(
-        [sys.executable, os.path.abspath(__file__), "--worker", battery_class, str(id_pct), str(bm_pct), str(n_days)],
+        [sys.executable, os.path.abspath(__file__), "--worker", battery_class, str(id_pct), str(bm_pct),
+         str(n_days), mode],
         capture_output=True, text=True, env=env,
     )
     if r.returncode != 0:
@@ -95,11 +109,11 @@ def run_scenario(battery_class, id_pct, bm_pct, n_days):
     return json.loads(line)
 
 
-def time_benchmark(n_days, battery_class="4h"):
+def time_benchmark(n_days, battery_class="4h", mode="realistic"):
     """Times a single grid point to estimate full-sweep runtime before committing to it."""
     id_pct, bm_pct = DEFAULTS[battery_class]
     t0 = datetime.now()
-    result = run_scenario(battery_class, id_pct, bm_pct, n_days)
+    result = run_scenario(battery_class, id_pct, bm_pct, n_days, mode)
     elapsed = (datetime.now() - t0).total_seconds()
     print(f"{n_days} days took {elapsed:.1f}s ({elapsed / max(n_days, 1):.2f}s/day)")
     if result:
@@ -109,14 +123,14 @@ def time_benchmark(n_days, battery_class="4h"):
           f"~{n_points * elapsed / 60:.1f} min for a {n_days}-day pilot.")
 
 
-def run_pilot(n_days, battery_class="4h"):
+def run_pilot(n_days, battery_class="4h", mode="realistic"):
     points = grid_points()
-    print(f"Sweeping {len(points)} (ID%, BM%) splits [{battery_class} class] over the last {n_days} available days")
+    print(f"Sweeping {len(points)} (ID%, BM%) splits [{battery_class} class, {mode} mode] over the last {n_days} available days")
     print("=" * 72)
     rows = []
     t0 = datetime.now()
     for id_pct, bm_pct in points:
-        result = run_scenario(battery_class, id_pct, bm_pct, n_days)
+        result = run_scenario(battery_class, id_pct, bm_pct, n_days, mode)
         if result:
             da_pct = round(1.0 - id_pct - bm_pct, 2)
             rows.append({"phase": "pilot", "class": battery_class, "da_pct": da_pct, **result})
@@ -147,11 +161,11 @@ def run_pilot(n_days, battery_class="4h"):
     print("58-day pilot reversed at 718-day scale (BRIEFING.md v27) for exactly this reason.")
 
 
-def run_validate(id_pct, bm_pct, n_days, battery_class="4h"):
+def run_validate(id_pct, bm_pct, n_days, battery_class="4h", mode="realistic"):
     default_id, default_bm = DEFAULTS[battery_class]
-    print(f"Full-scale validation [{battery_class} class] over {n_days} days...")
-    default = run_scenario(battery_class, default_id, default_bm, n_days)
-    candidate = run_scenario(battery_class, id_pct, bm_pct, n_days)
+    print(f"Full-scale validation [{battery_class} class, {mode} mode] over {n_days} days...")
+    default = run_scenario(battery_class, default_id, default_bm, n_days, mode)
+    candidate = run_scenario(battery_class, id_pct, bm_pct, n_days, mode)
     if not default or not candidate:
         print("⚠️  One or both scenarios failed - see FAILED lines above.")
         return
@@ -180,21 +194,25 @@ if __name__ == "__main__":
 
     cmd = sys.argv[1]
     if cmd == "--worker":
-        run_worker(sys.argv[2], float(sys.argv[3]), float(sys.argv[4]), int(sys.argv[5]))
+        mode = sys.argv[6] if len(sys.argv) > 6 else "realistic"
+        run_worker(sys.argv[2], float(sys.argv[3]), float(sys.argv[4]), int(sys.argv[5]), mode)
     elif cmd == "time":
         n = int(sys.argv[2]) if len(sys.argv) > 2 else 5
         cls = sys.argv[3] if len(sys.argv) > 3 else "4h"
-        time_benchmark(n, cls)
+        mode = sys.argv[4] if len(sys.argv) > 4 else "realistic"
+        time_benchmark(n, cls, mode)
     elif cmd == "pilot":
         n = int(sys.argv[2]) if len(sys.argv) > 2 else 60
         cls = sys.argv[3] if len(sys.argv) > 3 else "4h"
-        run_pilot(n, cls)
+        mode = sys.argv[4] if len(sys.argv) > 4 else "realistic"
+        run_pilot(n, cls, mode)
     elif cmd == "validate":
         if len(sys.argv) < 5:
-            print("Usage: python reservation_sensitivity.py validate ID BM N [4h|2h]")
+            print("Usage: python reservation_sensitivity.py validate ID BM N [4h|2h] [realistic|blind]")
             sys.exit(1)
         cls = sys.argv[5] if len(sys.argv) > 5 else "4h"
-        run_validate(float(sys.argv[2]), float(sys.argv[3]), int(sys.argv[4]), cls)
+        mode = sys.argv[6] if len(sys.argv) > 6 else "realistic"
+        run_validate(float(sys.argv[2]), float(sys.argv[3]), int(sys.argv[4]), cls, mode)
     else:
         print(f"Unknown command: {cmd}")
         sys.exit(1)

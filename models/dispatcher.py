@@ -57,11 +57,18 @@ import forecast_residuals as FR
 # "real_da" decides BM on the real DA price instead (legitimately known by
 # then - DA has cleared, same reason ID may know it) while still SETTLING at
 # the real SSP/SBP. Recorded as df_bm.attrs["bm_basis"] for shadow.py.
+#
+# id_decision_method / bm_decision_method="da_forecast" (diagnostic only, not
+# used by shadow.py): decides ID and/or BM on the same DA-forecast series the
+# DA leg itself trades on (decision_prices), instead of the real DA price -
+# i.e. puts every leg on equal "has to guess" footing. Used to test whether a
+# reservation-split sweep's apparent edge for ID/BM is a real opportunity or
+# just harvesting DA's forecast error (BRIEFING.md v31 follow-up).
 
 
 def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
                     cvar_alpha=None, cvar_lambda=None, write_schedules=True,
-                    bm_decision_method=None):
+                    bm_decision_method=None, id_decision_method=None):
     price_file = f"../data/market_index_{date}.csv"
     bmrs_file = f"../data/system_prices_{date}.csv"
 
@@ -153,11 +160,21 @@ def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
         # ffill/bfill covers clock-change days where DA and BMRS period counts differ
         bm_decision_prices = da_prices.reindex(ssp_series.index).ffill().bfill()
         bm_basis = "real_da"
+    elif bm_decision_method == "da_forecast":
+        bm_decision_prices = decision_prices.reindex(ssp_series.index).ffill().bfill()
+        bm_basis = "da_forecast"
     elif bm_decision_method is None:
         bm_decision_prices = None
         bm_basis = "foresight"
     else:
         raise ValueError(f"Unknown bm_decision_method: {bm_decision_method!r}")
+
+    if id_decision_method == "da_forecast":
+        id_decision_prices = decision_prices.reindex(id_prices.index).ffill().bfill()
+    elif id_decision_method is None:
+        id_decision_prices = None
+    else:
+        raise ValueError(f"Unknown id_decision_method: {id_decision_method!r}")
 
     print(f"Running dispatcher for {date}")
     if scenario_prices:
@@ -232,6 +249,7 @@ def run_dispatcher(date, da_forecast_method=None, n_scenarios=None,
             battery, id_prices, reserved_fraction=id_reserved,
             initial_soc_mwh=soc_after_da,
             cost_discharge=cost_discharge, cost_charge=cost_charge,
+            decision_prices=id_decision_prices,
         )
         df_id["id_price_discharge"] = df_id["id_price"] - cost_discharge
         df_id["id_price_charge"] = df_id["id_price"] + cost_charge

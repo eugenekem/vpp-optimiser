@@ -25,7 +25,7 @@ def simulate_intraday_prices(da_prices, seed=ID_RANDOM_SEED):
 
 
 def optimise_battery_id(battery, id_prices, reserved_fraction, initial_soc_mwh=None,
-                        cost_discharge=0.0, cost_charge=0.0):
+                        cost_discharge=0.0, cost_charge=0.0, decision_prices=None):
     """
     Solve the LP dispatch problem for the reserved intraday capacity slice.
 
@@ -42,6 +42,11 @@ def optimise_battery_id(battery, id_prices, reserved_fraction, initial_soc_mwh=N
         from the discharge price and added to the charge price inside the
         objective, so the optimiser stops cycling for spreads too thin to cover
         real costs. Default 0.0 preserves the original costless behaviour.
+    decision_prices : pd.Series or None
+        If given, the LP decides charge/discharge against THESE prices instead
+        of id_prices. The returned id_price column still holds id_prices, so
+        settlement is unaffected. None (default) decides on id_prices itself -
+        i.e. with foresight of the simulated intraday spread, same as today.
 
     Returns
     -------
@@ -64,9 +69,10 @@ def optimise_battery_id(battery, id_prices, reserved_fraction, initial_soc_mwh=N
         upBound=battery.soc_max * battery.capacity_mwh
     )
 
+    dec = id_prices if decision_prices is None else decision_prices
     prob += pulp.lpSum([
-        discharge[t] * (id_prices[t] - cost_discharge) * DURATION
-        - charge[t] * (id_prices[t] + cost_charge) * DURATION
+        discharge[t] * (dec[t] - cost_discharge) * DURATION
+        - charge[t] * (dec[t] + cost_charge) * DURATION
         for t in T
     ]), "id_net_revenue"
 
