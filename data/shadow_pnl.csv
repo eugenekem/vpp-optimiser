@@ -159,3 +159,4 @@ date,day_type,da_basis,cost_aware,bm_basis,da_net,id_net,bm_net,total_revenue,to
 2026-11-19,🟡 amber,reg_demand,True,real_da,42931.08,3259.36,3231.4,134213.34,84791.49,49421.84
 2026-11-20,🟡 amber,reg_demand,True,real_da,50528.35,6518.66,2232.29,180836.31,121556.99,59279.31
 2026-11-21,🟡 amber,reg_demand,True,real_da,43447.98,1080.76,1857.77,87701.22,41314.71,46386.51
+2026-11-22,🟡 amber,reg_demand,True,real_da,38913.16,1783.54,8177.82,130620.9,81746.38,48874.52
